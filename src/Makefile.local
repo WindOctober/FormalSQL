@@ -7,10 +7,7 @@ CAMLLEX = $(CAMLBIN)ocamllex
 %.ml %.mli :  %.mly
 	$(MENHIR) $<
 
-.PHONY: plugins/plugins_datacert.mlpack.d
-plugins/plugins_datacert.mlpack.d : plugins/sql_parser/sql_parser.ml plugins/sql_parser/sql_lexer.ml
-
 clean::
-	rm -f */*/.*.aux */*/*/.*.aux plugins/sql_parser/sql_lexer.ml plugins/sql_parser/sql_parser.ml plugins/sql_parser/sql_parser.mli
+	rm -f */.*.aux */*/.*.aux */*/*/.*.aux
 
 INSTALLDEFAULTROOT=SQLFS
