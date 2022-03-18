@@ -13,7 +13,6 @@
 
 Require Import Arith NArith ZArith String List.
 Require Import OrderedSet FiniteSet Bool3.
-Require Import Qcert.Data.Operators.OperatorsUtils.
 
 Definition option_compare (A : Type) (c : A -> A -> comparison) x y :=
   match x, y with
