@@ -42,4 +42,3 @@ data/proof_of_concept/Values.v
 data/proof_of_concept/GenericInstance.v
 data/proof_of_concept/SqlSyntax.v
 data/proof_of_concept/Movie.v
-data/proof_of_concept/Null.v
