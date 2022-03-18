@@ -8,10 +8,10 @@ authors: ["Véronique Benzaken <veronique.benzaken@universite-paris-saclay.fr>"
 ]
 license: "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International Public License"
 build: [
-  [cd src; make "-j%{jobs}%"]
+  [make "-j%{jobs}%"]
 ]
 install: [
-  [cd src; make "install"]
+  [make "install"]
 ]
 depends: [
   "coq" {= "8.11.2"}
