@@ -53,18 +53,21 @@ Defined.
 Inductive attribute : Set :=
   | Attr_string : string -> attribute
   | Attr_Z : string -> attribute
-  | Attr_bool : string -> attribute.
+  | Attr_bool : string -> attribute
+  | Attr_float : string -> attribute.
 
 Register attribute as datacert.attribute.type.
 Register Attr_string as datacert.attribute.Attr_string.
 Register Attr_Z as datacert.attribute.Attr_Z.
 Register Attr_bool as datacert.attribute.Attr_bool.
+Register Attr_float as datacert.attribute.Attr_float.
 
 Definition type_of_attribute (a : attribute) :=
   match a with
     | Attr_string _ => type_string
     | Attr_Z _ => type_Z
     | Attr_bool _  => type_bool
+    | Attr_float _ => type_float
   end.
 
 Open Scope N_scope.
@@ -74,6 +77,7 @@ Definition N_of_attribute a :=
     | Attr_string _ => 0
     | Attr_Z _ => 1
     | Attr_bool _ => 2
+    | Attr_float _ => 3
   end.
 
 Definition N2_of_attribute a :=
@@ -81,6 +85,7 @@ Definition N2_of_attribute a :=
     | Attr_string s
     | Attr_Z s
     | Attr_bool s => (N_of_attribute a, s)
+    | Attr_float s => (N_of_attribute a, s)
   end.
 
 Definition attribute_compare a1 a2 :=

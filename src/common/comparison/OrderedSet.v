@@ -4417,3 +4417,124 @@ Ltac compareAB_eq_bool_ok_tac :=
         destruct x2 as [a2 b2];
         apply compareAB_eq_bool_ok
   end.
+
+
+(* A total order on floating point numbers *)
+
+Require Import Floats.
+
+
+Definition float_compare (f1 f2:float) :=
+  match Prim2SF f1, Prim2SF f2 with
+  | S754_zero s1, S754_zero s2 => Oset.compare Obool s1 s2
+  | S754_zero _, _ => Lt
+  | S754_infinity _, S754_zero _ => Gt
+  | S754_infinity s1, S754_infinity s2 => Oset.compare Obool s1 s2
+  | S754_infinity _, _ => Lt
+  | S754_nan, S754_finite _ _ _ => Lt
+  | S754_nan, S754_nan => Eq
+  | S754_nan, _ => Gt
+  | S754_finite s1 m1 e1, S754_finite s2 m2 e2 =>
+    match Oset.compare Obool s1 s2 with
+    | Eq => match Pos.compare m1 m2 with
+            | Eq => Z.compare e1 e2
+            | c => c
+            end
+    | c => c
+    end
+  | S754_finite _ _ _, _ => Gt
+  end.
+
+
+Definition Ofloat : Oset.Rcd float.
+  split with float_compare; unfold float_compare.
+  - intros f1 f2.
+    case_eq (Prim2SF f1); [intros s1|intros s1| |intros s1 m1 e1]; intro Heq1.
+    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2;
+        try (intro H; subst f2; now rewrite Heq1 in Heq2).
+      case_eq (Oset.compare Obool s1 s2); intro Hc;
+        try (intro H; subst f2; rewrite Heq1 in Heq2; inversion Heq2; subst s2;
+             now rewrite Oset.compare_eq_refl in Hc).
+      apply Prim2SF_inj. rewrite Heq1, Heq2.
+      rewrite Oset.compare_eq_iff in Hc. now subst s1.
+    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2;
+        try (intro H; subst f2; now rewrite Heq1 in Heq2).
+      case_eq (Oset.compare Obool s1 s2); intro Hc;
+        try (intro H; subst f2; rewrite Heq1 in Heq2; inversion Heq2; subst s2;
+             now rewrite Oset.compare_eq_refl in Hc).
+      apply Prim2SF_inj. rewrite Heq1, Heq2.
+      rewrite Oset.compare_eq_iff in Hc. now subst s1.
+    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2;
+        try (intro H; subst f2; now rewrite Heq1 in Heq2).
+      apply Prim2SF_inj. now rewrite Heq1, Heq2.
+    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2;
+        try (intro H; subst f2; now rewrite Heq1 in Heq2).
+      case_eq (Oset.compare Obool s1 s2); intro Hc;
+        try (intro H; subst f2; rewrite Heq1 in Heq2; inversion Heq2; subst s2;
+             now rewrite Oset.compare_eq_refl in Hc).
+      rewrite Oset.compare_eq_iff in Hc. subst s2.
+      case_eq ((m1 ?= m2)%positive); intro Hc;
+        try (intro H; subst f2; rewrite Heq1 in Heq2; inversion Heq2; subst e2 m2;
+             now rewrite Pos.compare_refl in Hc).
+      apply Pos.compare_eq in Hc. subst m2.
+      case_eq ((e1 ?= e2)%Z); intro Hc;
+        try (intro H; subst f2; rewrite Heq1 in Heq2; inversion Heq2; subst e2;
+             now rewrite Z.compare_refl in Hc).
+      apply Z.compare_eq in Hc. subst e2.
+      apply Prim2SF_inj. now rewrite Heq1, Heq2.
+  - intros f1 f2 f3. case_eq (Prim2SF f1); [intros s1|intros s1| |intros s1 m1 e1]; intro Heq1.
+    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2;
+        try (intros _; case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto;
+             discriminate).
+      intro Hs. case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto.
+      revert Hs. now apply Oset.compare_lt_trans.
+    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2;
+        try (intros _; case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto;
+             discriminate);
+        try discriminate.
+      intro Hs. case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto.
+      revert Hs. now apply Oset.compare_lt_trans.
+    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2;
+        try (intros _; case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto;
+             discriminate);
+        try discriminate.
+    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2;
+        try (intros _; case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto;
+             discriminate);
+        try discriminate.
+      case_eq (Oset.compare Obool s1 s2); intro Hs; try discriminate.
+      * {
+          rewrite Oset.compare_eq_iff in Hs. subst s2.
+          case_eq ((m1 ?= m2)%positive); intro Hm; try discriminate.
+          - apply Pos.compare_eq in Hm. subst m2. intro He.
+            case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto.
+            case_eq (Oset.compare Obool s1 s3); try discriminate; auto.
+            intro Hs. rewrite Oset.compare_eq_iff in Hs. subst s3.
+            case_eq ((m1 ?= m3)%positive); try discriminate; auto.
+            intro Hm. apply Pos.compare_eq in Hm. subst m3. revert He.
+            now apply Zcompare_Lt_trans.
+          - intros _. case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto.
+            case_eq (Oset.compare Obool s1 s3); try discriminate; auto.
+            intro Hs. rewrite Oset.compare_eq_iff in Hs. subst s3.
+            case_eq ((m2 ?= m3)%positive); try discriminate; auto.
+            + intro Hm2. apply Pos.compare_eq in Hm2. subst m3. intro He. now rewrite Hm.
+            + intros Hm2 _. replace ((m1 ?= m3)%positive) with Lt; auto.
+              symmetry. revert Hm Hm2. rewrite !Pos.compare_lt_iff. lia.
+        }
+      * {
+          intros _. case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto.
+          case_eq (Oset.compare Obool s2 s3); try discriminate.
+          - intro Hs2. rewrite Oset.compare_eq_iff in Hs2. subst s3. now rewrite Hs.
+          - intros Hs2 _. now rewrite (Oset.compare_lt_trans _ _ _ _ Hs Hs2).
+        }
+  - intros f1 f2. case_eq (Prim2SF f1); [intros s1|intros s1| |intros s1 m1 e1]; intro Heq1.
+    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2; auto.
+      now apply Oset.compare_lt_gt.
+    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2; auto.
+      now apply Oset.compare_lt_gt.
+    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2; auto.
+    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2; auto.
+      rewrite (Oset.compare_lt_gt _ s1 s2). case (Oset.compare Obool s2 s1); auto.
+      simpl. rewrite (Pos.compare_antisym m1 m2). case ((m1 ?= m2)%positive); auto.
+      simpl. apply Z.compare_antisym.
+Defined.

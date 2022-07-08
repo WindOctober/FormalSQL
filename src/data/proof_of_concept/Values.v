@@ -11,7 +11,8 @@
 (**                                                                                 *)
 (************************************************************************************)
 
-Require Import Arith NArith ZArith String List.
+Require Import Arith NArith ZArith String List Floats.
+From QCert Require Import Float.
 Require Import OrderedSet FiniteSet Bool3.
 
 Definition option_compare (A : Type) (c : A -> A -> comparison) x y :=
@@ -31,7 +32,8 @@ Hypothesis OVal : Oset.Rcd value.
 Inductive type := 
  | type_string 
  | type_Z
- | type_bool.
+ | type_bool
+ | type_float.
 
 Open Scope N_scope.
 
@@ -41,6 +43,7 @@ Definition N_of_type :=
     | type_string => 0
     | type_Z => 1
     | type_bool => 2
+    | type_float => 3
     end.
 
 Definition OT : Oset.Rcd type.
@@ -125,18 +128,21 @@ Module NullValues.
 Inductive value : Set :=
   | Value_string : option string -> value
   | Value_Z : option Z -> value
-  | Value_bool : option bool -> value.
+  | Value_bool : option bool -> value
+  | Value_float : option float -> value.
 
 Register value as datacert.value.type.
 Register Value_string as datacert.value.Value_string.
 Register Value_Z as datacert.value.Value_Z.
 Register Value_bool as datacert.value.Value_bool.
+Register Value_float as datacert.value.Value_float.
 
 Definition type_of_value v := 
 match v with
   | Value_string _  => type_string
   | Value_Z _ => type_Z
   | Value_bool _ => type_bool
+  | Value_float _ => type_float
   end.
 
 (** Default values for each type. *)
@@ -145,6 +151,7 @@ Definition default_value d :=
     | type_string => Value_string None
     | type_Z => Value_Z None
     | type_bool => Value_bool None
+    | type_float => Value_float None
   end.
 
 (** injection of domain names into natural numbers in order to
@@ -161,21 +168,29 @@ Definition value_compare x y :=
   match x, y with
     | Value_string s1, Value_string s2 => option_compare _ string_compare s1 s2
     | Value_string _, Value_Z _
-    | Value_string _, Value_bool _ => Lt
+    | Value_string _, Value_bool _
+    | Value_string _, Value_float _ => Lt
 
     | Value_Z _, Value_string _ => Gt
     | Value_Z z1, Value_Z z2 => option_compare _ Z.compare z1 z2
-    | Value_Z _, Value_bool _ => Lt
+    | Value_Z _, Value_bool _
+    | Value_Z _, Value_float _ => Lt
 
     | Value_bool _, Value_string _
     | Value_bool _, Value_Z _ => Gt
     | Value_bool b1, Value_bool b2 => option_compare _ bool_compare b1 b2
+    | Value_bool _, Value_float _ => Lt
+
+    | Value_float _, Value_string _
+    | Value_float _, Value_Z _
+    | Value_float _, Value_bool _ => Gt
+    | Value_float f1, Value_float f2 => option_compare _ (Oset.compare Ofloat) f1 f2
   end.
 
 Definition OVal : Oset.Rcd value.
 split with value_compare.
 - (* 1/3 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ]] [[s2 | ] | [z2 | ] | [b2 | ]];
+  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ]] [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ]];
     try discriminate; simpl; trivial.
   + generalize (Oset.eq_bool_ok Ostring s1 s2); simpl; case (string_compare s1 s2).
     * apply (f_equal (fun x => Value_string (Some x))).
@@ -189,16 +204,22 @@ split with value_compare.
     * apply (f_equal (fun x => Value_bool (Some x))).
     * intros H1 H2; injection H2; apply H1.
     * intros H1 H2; injection H2; apply H1.
+  + generalize (Oset.eq_bool_ok Ofloat f1 f2). change (Oset.compare Ofloat f1 f2) with (float_compare f1 f2). case (float_compare f1 f2).
+    * intros ->; auto.
+    * intros H1 H2; injection H2; apply H1.
+    * intros H1 H2; injection H2; apply H1.
 - (* 1/2 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ]] [[s2 | ] | [z2 | ] | [b2 | ]] [[s3 | ] | [z3 | ] | [b3 | ]]; trivial; try discriminate; simpl.
+  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ]] [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ]] [[s3 | ] | [z3 | ] | [b3 | ] | [f3 | ]]; trivial; try discriminate; simpl.
   + apply (Oset.compare_lt_trans Ostring).
   + apply (Oset.compare_lt_trans OZ).
   + apply (Oset.compare_lt_trans Obool).
+  + apply (Oset.compare_lt_trans Ofloat).
 - (* 1/1 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ]] [[s2 | ] | [z2 | ] | [b2 | ]]; trivial; simpl.
+  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ]] [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ]]; trivial; simpl.
   + apply (Oset.compare_lt_gt Ostring).
   + apply (Oset.compare_lt_gt OZ).
   + apply (Oset.compare_lt_gt Obool).
+  + apply (Oset.compare_lt_gt Ofloat).
 Defined.
 
 Definition FVal := Fset.build OVal.
@@ -212,11 +233,25 @@ Definition interp_predicate p :=
             match Z.compare a1 a2 with Lt => true3 | _ => false3 end
           | _ => unknown3
         end
+    | Predicate "<." =>
+      fun l =>
+        match l with
+          | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
+            if float_lt a1 a2 then true3 else false3
+          | _ => unknown3
+        end
     | Predicate "<=" =>
       fun l =>
         match l with
           | Value_Z (Some a1) :: Value_Z (Some a2) :: nil =>
             match Z.compare a1 a2 with Gt => false3 | _ => true3 end
+          | _ => unknown3
+        end
+    | Predicate "<=." =>
+      fun l =>
+        match l with
+          | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
+            if float_le a1 a2 then true3 else false3
           | _ => unknown3
         end
     | Predicate ">" =>
@@ -226,6 +261,13 @@ Definition interp_predicate p :=
             match Z.compare a1 a2 with Gt => true3 | _ => false3 end
           | _ => unknown3
         end
+    | Predicate ">." =>
+      fun l =>
+        match l with
+          | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
+            if float_lt a2 a1 then true3 else false3
+          | _ => unknown3
+        end
     | Predicate ">=" =>
       fun l =>
         match l with
@@ -233,11 +275,20 @@ Definition interp_predicate p :=
             match Z.compare a1 a2 with Lt => false3 | _ => true3 end
           | _ => unknown3
         end
+    | Predicate ">=." =>
+      fun l =>
+        match l with
+          | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
+            if float_le a2 a1 then true3 else false3
+          | _ => unknown3
+        end
     | Predicate "=" =>
       fun l =>
         match l with
           | Value_Z (Some a1) :: Value_Z (Some a2) :: nil =>
             match Z.compare a1 a2 with Eq => true3 | _ => false3 end
+          | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
+            if float_eq_dec a1 a2 then true3 else false3
           | Value_string (Some s1) :: Value_string (Some s2) :: nil =>
             match string_compare s1 s2 with Eq => true3 | _ => false3 end
           | _ => unknown3
@@ -247,6 +298,8 @@ Definition interp_predicate p :=
         match l with
           | Value_Z (Some a1) :: Value_Z (Some a2) :: nil =>
             match Z.compare a1 a2 with Eq => false3 | _ => true3 end
+          | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
+            if float_eq_dec a1 a2 then false3 else true3
           | Value_string (Some s1) :: Value_string (Some s2) :: nil =>
             match string_compare s1 s2 with Eq => false3 | _ => true3 end
           | _ => unknown3
@@ -261,21 +314,45 @@ Definition interp_symbol f :=
         match l with
           | Value_Z (Some a1) :: Value_Z (Some a2) :: nil => Value_Z (Some (Zplus a1 a2))
           | _ => Value_Z None end
+    | Symbol _ "plus." =>
+      fun l =>
+        match l with
+          | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
+            Value_float (Some (float_add a1 a2))
+          | _ => Value_float None end
     | Symbol _ "mult" =>
       fun l =>
         match l with
           | Value_Z (Some a1) :: Value_Z (Some a2) :: nil => Value_Z (Some (Zmult a1 a2))
           | _ => Value_Z None end
+    | Symbol _ "mult." =>
+      fun l =>
+        match l with
+          | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
+            Value_float (Some (float_mult a1 a2))
+          | _ => Value_float None end
     | Symbol _ "minus" =>
       fun l =>
         match l with
           | Value_Z (Some a1) :: Value_Z (Some a2) :: nil => Value_Z (Some (Zminus a1 a2))
           | _ => Value_Z None end
+    | Symbol _ "minus." =>
+      fun l =>
+        match l with
+          | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
+            Value_float (Some (float_sub a1 a2))
+          | _ => Value_float None end
     | Symbol _ "opp" =>
       fun l =>
         match l with
           | Value_Z (Some a1) :: nil => Value_Z (Some (Z.opp a1))
           | _ => Value_Z None end
+    | Symbol _ "opp." =>
+      fun l =>
+        match l with
+          | Value_float (Some a1) :: nil =>
+            Value_float (Some (float_sub float_zero a1))
+          | _ => Value_float None end
     | CstVal _ v =>
       fun l =>
         match l with
@@ -290,6 +367,8 @@ Definition interp_aggregate a l :=
     | Aggregate "count" => Value_Z (Some (Z_of_nat (List.length l)))
     | Aggregate "sum" =>
       Value_Z (Some (fold_left (fun acc x => match x with Value_Z (Some x) => (acc + x)%Z | _ => acc end) l 0%Z))
+    | Aggregate "sum." =>
+      Value_float (Some (fold_left (fun acc x => match x with Value_float (Some x) => (float_add acc x) | _ => acc end) l float_zero))
     | Aggregate "max" =>
       Value_Z (Some (
       if forallb
@@ -313,6 +392,27 @@ Definition interp_aggregate a l :=
         end
       else
          0%Z))
+    | Aggregate "max." =>
+      Value_float (Some (
+      if forallb
+           (fun x =>
+              match x with
+              | Value_float _ => true
+              | _ => false
+              end) l then
+        let l' := filter
+                   (fun x =>
+                      match x with
+                      | Value_float (Some _) => true
+                      | _ => false
+                      end) l in
+          fold_right (fun x y =>
+                        match x with
+                        | Value_float (Some x) => float_max x y
+                        | _ => y
+                        end) JsNumber.neg_infinity l'
+      else
+         JsNumber.neg_infinity))
     | Aggregate "avg" =>
       Value_Z
         (Some (let sum :=
@@ -320,6 +420,17 @@ Definition interp_aggregate a l :=
                                            | Value_Z (Some x) => (acc + x)%Z
                                            | _ => acc end) l 0%Z in
                Z.quot sum (Z_of_nat (List.length l))))
+    | Aggregate "avg." =>
+      Value_float (Some
+                     (let sum :=
+                   fold_right (fun x acc => match x with
+                                           | Value_float (Some x) => (float_add x acc)
+                                           | _ => acc end) float_zero l in
+                      let ll := Z.of_nat (List.length l) in
+                      match ll with
+                      | 0%Z => float_zero
+                      | _ => float_div sum (float_of_int ll)
+                   end))
     | Aggregate _ => Value_Z None
   end.
 
