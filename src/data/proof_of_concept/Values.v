@@ -12,7 +12,7 @@
 (************************************************************************************)
 
 Require Import Arith NArith ZArith String List Floats.
-From QCert Require Import Float.
+From Qcert Require Import Float.
 Require Import OrderedSet FiniteSet Bool3.
 
 Definition option_compare (A : Type) (c : A -> A -> comparison) x y :=
