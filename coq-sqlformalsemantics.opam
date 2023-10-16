@@ -1,5 +1,5 @@
 opam-version: "2.0"
-maintainer: "Chantal.Keller@lri.fr"
+maintainer: "ckeller@lmf.cnrs.fr"
 homepage: "https://framagit.org/formaldata/sqlformalsemantics"
 dev-repo: "git+https://framagit.org/formaldata/sqlformalsemantics.git"
 bug-reports: "https://framagit.org/formaldata/sqlformalsemantics/-/issues"
