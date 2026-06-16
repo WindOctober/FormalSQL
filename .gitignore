@@ -1,0 +1,14 @@
+/.opam-rocq/
+/_build/
+*.aux
+*.glob
+*.vo
+*.vos
+*.vok
+*.vio
+*.cmxs
+*.native
+.lia.cache
+src/.Makefile.rocq.d
+src/Makefile.rocq
+src/Makefile.rocq.conf

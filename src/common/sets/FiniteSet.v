@@ -16,7 +16,7 @@
 
 Set Implicit Arguments.
 
-Require Import Bool List Sorted SetoidList Arith NArith.
+Require Import Bool List Sorted SetoidList Arith NArith Lia.
 
 Require Import BasicFacts ListFacts ListPermut ListSort OrderedSet FiniteSetImpl. 
 
@@ -570,9 +570,10 @@ apply lt_le_trans with (cardinal FA (union _ (singleton FA e) s1)).
     rewrite cardinal_spec, (comparelA_eq_length_eq _ _ _ (elements_spec1 _ _ _ J)), elements_empty.
     apply refl_equal.
   }
-  rewrite J, <- plus_n_O in K.
-  rewrite K.
-  rewrite cardinal_singleton; apply le_n.
+  rewrite J in K.
+  assert (K' : cardinal FA (union FA (singleton FA e) s1) =
+               cardinal FA (singleton FA e) + cardinal FA s1) by lia.
+  rewrite K', cardinal_singleton; lia.
 - apply cardinal_subset.
   rewrite subset_spec; intros x Hx; rewrite subset_spec in H.
   rewrite mem_union, Bool.orb_true_iff, singleton_spec in Hx.
@@ -1746,5 +1747,3 @@ Notation "s1 'subSE?' s2" := (Feset.subset _ s1 s2) (at level 70, no associativi
 Notation "s1 'subSE' s2" := (Feset.subset _ s1 s2 = true) (at level 70, no associativity).
 Notation "'emptysetSE'" := (Feset.empty _) (at level 70, no associativity).
 Notation "a 'addSE' s" := (Feset.add _ a s) (at level 70, no associativity).
-
-

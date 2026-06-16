@@ -15,7 +15,7 @@
 
 Set Implicit Arguments.
 
-Require Import List Arith.
+Require Import List Arith BasicFacts.
 
 (** ** Unfolding the usual definitions of lists' functions; 
       sometimes [simpl] simplifies too much. *)

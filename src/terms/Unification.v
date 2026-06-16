@@ -13,7 +13,7 @@
 
 Set Implicit Arguments.
 
-Require Import Arith List Relations Bool.
+Require Import Arith List Relations Bool Lia.
 Require Import BasicFacts ListFacts OrderedSet FiniteSet.
 Require Import Term Substitution Subterm.
 
@@ -2113,20 +2113,19 @@ Lemma eqt_meas2_strict_mon :
     eqt_meas2 power4 (Var x) (Term g l2) < eqt_meas2 power4 (Var x) (Term f l1).
 Proof.
 intros x f l1 g l2 L; simpl in L; generalize (le_S_n _ _ L); clear L; intro L.
-unfold eqt_meas2; simpl size_common; rewrite <- 2 plus_n_O.
-simpl size_minus at 1 3; apply plus_lt_compat_l.
-simpl; apply plus_lt_le_compat.
-- refine (lt_le_trans _ _ _ _ (power4_mon L)).
-  rewrite power4_unfold.
-  set (n := list_size (size (symbol:=symbol)) l2).
-  generalize (power4_ge_one n).
-  set (m := power4 n); clearbody n m; intro Hm.
-  apply lt_le_trans with (1 + m); [apply le_n | ].
-  simpl mult; apply plus_le_compat; [assumption | ].
-  apply le_plus_l.
-- rewrite <- 2 plus_n_O.
-  do 2 (apply plus_le_compat; [apply power4_mon; apply lt_le_weak; assumption | ]).
-  apply power4_mon; apply lt_le_weak; assumption.
+unfold eqt_meas2; simpl size_common; simpl size_minus.
+repeat rewrite plus_n_O.
+apply plus_lt_compat_l.
+set (n := list_size (size (symbol:=symbol)) l1).
+set (m := list_size (size (symbol:=symbol)) l2) in *.
+assert (Hle : power4 (S m) <= power4 n) by (apply power4_mon; exact L).
+simpl in Hle; rewrite plus_n_O in Hle.
+refine (le_lt_trans _ _ _ Hle _).
+generalize (power4_ge_one n).
+set (p := power4 n); clearbody n p; intro Hp.
+apply lt_le_trans with (1 + p); [apply le_n | ].
+simpl mult; apply plus_le_compat; [assumption | ].
+apply le_plus_l.
 Qed.
 
 Lemma size_minus_le : 
@@ -2172,8 +2171,8 @@ intros _; apply le_O_n.
 
 destruct l1 as [ | s1 l1].
 destruct l2 as [ | t2 l1].
-simpl; do 2 rewrite <- plus_n_O; apply le_n.
-simpl; do 2 rewrite <- plus_n_O; apply size_minus_le; assumption.
+simpl; repeat rewrite plus_n_O; apply le_n.
+simpl; repeat rewrite plus_n_O; apply size_minus_le; assumption.
 intro l2; apply le_trans with (f (size t1) + f (list_size (@size _ _) (s1 :: l1))).
 destruct l2 as [ | t2 l2].
 apply plus_le_compat_l; apply IHl1; intros; apply IH; right; assumption.
@@ -2279,18 +2278,18 @@ pattern (size_minus_list power4 (t1 :: l1) nil);
 simpl plus; cbv beta; do 2 apply le_n_S.
 do 2 apply le_S.
 apply le_trans with (power4 (list_size (@size _ _) (t1 :: l1))).
-apply size_minus_list_le.
-apply power4_convex.
-intros; apply power4_ge_one.
-apply le_trans with (power4 (S (list_size (@size _ _) (t1 :: l1)))).
-apply lt_le_weak; apply power4_strict_mon.
-apply le_trans with (size t1).
-apply size_ge_one.
-apply le_plus_l.
-apply le_n.
-simpl; apply le_n.
+- rewrite plus_n_O; apply size_minus_list_le.
+  apply power4_convex.
+  intros; apply power4_ge_one.
+- apply le_trans with (power4 (S (list_size (@size _ _) (t1 :: l1)))).
+  apply lt_le_weak; apply power4_strict_mon.
+  apply le_trans with (size t1).
+  apply size_ge_one.
+  apply le_plus_l.
+  apply le_n.
+simpl; repeat rewrite plus_n_O; apply le_n.
 (* 1/1 l1 = _ :: _, l2 = _ :: _ *)
-apply le_lt_trans with (size_minus_list power4 (t1 :: l1) (t2 :: l2) + size_minus_list power4 (t2 :: l2) (t1 :: l1) + size (Term f1 (t1 :: l1))).
+- apply le_lt_trans with (size_minus_list power4 (t1 :: l1) (t2 :: l2) + size_minus_list power4 (t2 :: l2) (t1 :: l1) + size (Term f1 (t1 :: l1))).
 apply plus_le_compat_l; apply size_common_le.
 set (n := size_minus power4 (Var x) (Term f1 (t1 :: l1))) in *; simpl in n.
 set (m := size_common (Var x) (Term f1 (t1 :: l1))) in *; simpl in m.
@@ -2312,18 +2311,8 @@ intros; apply power4_ge_one.
 apply power4_mon; assumption.
 set (p := (list_size (@size _ _) k1)) in *; simpl.
 do 2 apply le_n_S; do 2 apply le_S.
-rewrite <- plus_assoc.
-apply plus_le_compat.
-clear; clearbody p; induction p as [ | p]; simpl.
-apply le_O_n.
-replace (S p) with (1 + p); [ | apply refl_equal].
-apply plus_le_compat.
-apply power4_ge_one.
-apply le_trans with (power4 p).
-assumption.
-apply le_plus_l.
-apply plus_le_compat_l.
-apply le_plus_l.
+clear; clearbody p; induction p as [ | p]; simpl; [lia | ].
+generalize (power4_ge_one p); lia.
 Qed.
 
 Lemma le_plus_trans_alt : forall n m p : nat, n <= m -> n <= p + m.
@@ -3094,9 +3083,8 @@ unfold measure; intro n; induction n as [ | n]; intros l sigma H Inv_pb.
       destruct s; destruct t; simpl.
       - discriminate.
       - discriminate.
-      - do 2 rewrite <- plus_n_O.
-        rewrite plus_comm; discriminate.
-      - rewrite plus_comm; discriminate.
+      - intro H; generalize (power4_ge_one (list_size (@size _ _) l)); lia.
+      - intro H; lia.
     }
     destruct m as [ | m].
     * apply False_rec; apply m_diff_zero; apply refl_equal.

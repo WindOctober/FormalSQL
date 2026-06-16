@@ -363,7 +363,7 @@ Lemma length_fold_inter_ :
 Proof.
 fix length_fold_inter_ 3.
 intros acc l1 l2; case l2; clear l2; simpl.
-rewrite <- plus_n_O; reflexivity.
+	rewrite plus_n_O; reflexivity.
 intros a2 l2; case (Oeset.mem_bool OA a2 l1).
 rewrite (length_fold_inter_ (acc ++ a2 :: nil) l1 l2).
 rewrite (length_fold_inter_ (a2 :: nil) l1 l2); simpl.

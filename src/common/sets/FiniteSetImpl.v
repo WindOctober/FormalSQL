@@ -21,7 +21,7 @@ Require Import FSets.
 
 Require Import OrderedSet (*BoolFacts ListFacts ListPermut ListSort*).
 
-Require Import ZArith.
+Require Import ZArith Lia.
 
 Import Int.
 Import Z_as_Int.
@@ -614,10 +614,20 @@ Fixpoint isok s :=
 
 Scheme tree_ind2 := Induction for tree Sort Prop.
 
-Local Hint Resolve (Oeset.compare_eq_refl Elt) (Oeset.compare_eq_trans Elt) 
-     (Oeset.compare_eq_lt_trans Elt)  (Oeset.compare_lt_eq_trans Elt)
-     (Oeset.compare_lt_trans Elt) @ok : datacert.
-Local Hint Immediate (Oeset.compare_eq_sym Elt) (Oeset.compare_lt_gt Elt) : datacert.
+Create HintDb datacert.
+
+Local Definition compare_eq_refl_hint := Oeset.compare_eq_refl Elt.
+Local Definition compare_eq_trans_hint := Oeset.compare_eq_trans Elt.
+Local Definition compare_eq_lt_trans_hint := Oeset.compare_eq_lt_trans Elt.
+Local Definition compare_lt_eq_trans_hint := Oeset.compare_lt_eq_trans Elt.
+Local Definition compare_lt_trans_hint := Oeset.compare_lt_trans Elt.
+Local Definition compare_eq_sym_hint := Oeset.compare_eq_sym Elt.
+Local Definition compare_lt_gt_hint := Oeset.compare_lt_gt Elt.
+
+Local Hint Resolve compare_eq_refl_hint compare_eq_trans_hint
+     compare_eq_lt_trans_hint compare_lt_eq_trans_hint
+     compare_lt_trans_hint @ok : datacert.
+Local Hint Immediate compare_eq_sym_hint compare_lt_gt_hint : datacert.
 Local Hint Unfold In lt_tree gt_tree : datacert.
 Local Hint Constructors InT bst : datacert.
 Local Hint Unfold Ok : datacert.
@@ -677,9 +687,16 @@ Proof.
  rewrite Oeset.compare_lt_gt, Hxy in Kxy; discriminate Kxy.
  split; intros; try discriminate. assert (Kxy : Oeset.compare Elt y x = Lt) by auto with datacert.
  rewrite Oeset.compare_lt_gt, Hxy in Kxy; discriminate Kxy.
-  rewrite <- andb_lazy_alt, !andb_true_iff, <-IHl, <-IHr.
-  unfold lt_tree; intuition_in; order.
-  apply (Oeset.compare_eq_lt_trans _ y0 y x); [ | rewrite Oeset.compare_lt_gt, Hxy]; trivial.
+	  rewrite <- andb_lazy_alt, !andb_true_iff, <-IHl, <-IHr.
+	  split.
+	  + intros Hnode; split; unfold lt_tree; intros y0 Hy0; apply Hnode;
+	    [constructor 2 | constructor 3]; assumption.
+	  + intros [Hl Hr]; unfold lt_tree in *; intros y0 Hy0.
+	    inversion Hy0 as [l0 r0 h0 y' Heq | l0 r0 h0 y' Hleft | l0 r0 h0 y' Hright]; subst.
+	    * apply (Oeset.compare_eq_lt_trans _ y0 y x); [assumption | ].
+	      rewrite Oeset.compare_lt_gt, Hxy; reflexivity.
+	    * apply Hl; assumption.
+	    * apply Hr; assumption.
 Qed.
 
 Lemma gtb_tree_iff : forall x s, gt_tree x s <-> gtb_tree x s = true.
@@ -687,23 +704,35 @@ Proof.
  induction s as [|l IHl y r IHr h]; simpl.
  unfold gt_tree; intuition_in.
  case_eq (Oeset.compare Elt x y); intro Hxy.
- split; intros; try discriminate. assert (Kxy : Oeset.compare Elt x y = Lt) by auto with datacert. 
- rewrite Hxy in Kxy; discriminate Kxy.
- rewrite <- andb_lazy_alt, !andb_true_iff, <-IHl, <-IHr.
- unfold gt_tree; intuition_in; order.
- apply (Oeset.compare_lt_eq_trans _ x y y0); [ | apply Oeset.compare_eq_sym]; trivial.
- split; intros; try discriminate. assert (Kxy : Oeset.compare Elt x y = Lt) by auto with datacert. 
- rewrite Kxy in Hxy; discriminate Hxy.
+	 split; intros; try discriminate. assert (Kxy : Oeset.compare Elt x y = Lt) by auto with datacert. 
+	 rewrite Hxy in Kxy; discriminate Kxy.
+	 rewrite <- andb_lazy_alt, !andb_true_iff, <-IHl, <-IHr.
+	 split.
+	 + intros Hnode; split; unfold gt_tree; intros y0 Hy0; apply Hnode;
+	   [constructor 2 | constructor 3]; assumption.
+	 + intros [Hl Hr]; unfold gt_tree in *; intros y0 Hy0.
+	   inversion Hy0 as [l0 r0 h0 y' Heq | l0 r0 h0 y' Hleft | l0 r0 h0 y' Hright]; subst.
+	   * apply (Oeset.compare_lt_eq_trans _ x y y0); [assumption | ].
+	     apply Oeset.compare_eq_sym; assumption.
+	   * apply Hl; assumption.
+	   * apply Hr; assumption.
+	 + split.
+	   * intros Hgt.
+	     assert (Kxy : Oeset.compare Elt x y = Lt).
+	     { apply Hgt; constructor; apply Oeset.compare_eq_refl. }
+	     rewrite Hxy in Kxy; discriminate.
+	   * discriminate.
 Qed.
 
 Lemma isok_iff : forall s, Ok s <-> isok s = true.
 Proof.
  induction s as [|l IHl y r IHr h].
- intuition_in.
- unfold iff; simpl.
- rewrite <- 3 andb_lazy_alt, 3 !andb_true_iff.
- rewrite <- IHl, <-IHr, <- ltb_tree_iff, <- gtb_tree_iff.
-intuition_in.
+ - split; intro; [reflexivity | constructor; constructor].
+ - unfold iff; simpl.
+   repeat rewrite <- andb_lazy_alt; repeat rewrite andb_true_iff.
+   rewrite <- IHl, <- IHr, <- ltb_tree_iff, <- gtb_tree_iff.
+   intuition_in.
+   apply bst_Ok; constructor; try apply ok; assumption.
 Qed.
 
 Instance isok_Ok s : isok s = true -> Ok s | 10.
@@ -730,8 +759,16 @@ Lemma In_node_iff :
  forall l x r h y,
   InT y (Node l x r h) <-> InT y l \/ eq_elt y x \/ InT y r.
 Proof.
- intuition_in.
- Qed.
+ split; intro H.
+ - inversion H; subst.
+   + right; left; assumption.
+   + left; assumption.
+   + right; right; assumption.
+ - destruct H as [H | [H | H]].
+   + constructor 2; assumption.
+   + constructor 1; assumption.
+   + constructor 3; assumption.
+	 Qed.
 
 (** Results about [lt_tree] and [gt_tree] *)
 
@@ -875,12 +912,21 @@ Qed.
 
 Lemma singleton_spec : forall x y, InT y (singleton x) <-> eq_elt y x.
 Proof.
- unfold singleton; intuition_in.
- Qed.
+ intros x y; unfold singleton; rewrite (In_node_iff Leaf x Leaf 1%Z y); split; intro H.
+ - destruct H as [H | [H | H]].
+   + inversion H.
+   + assumption.
+   + inversion H.
+ - right; left; assumption.
+Qed.
 
 Instance singleton_ok x : Ok (singleton x).
 Proof.
- unfold singleton; auto with datacert.
+ unfold singleton; apply bst_Ok; constructor.
+ - constructor.
+ - constructor.
+ - unfold lt_tree; intros y Hy; inversion Hy.
+ - unfold gt_tree; intros y Hy; inversion Hy.
 Qed.
 
 (** * Helper functions *)
@@ -888,20 +934,20 @@ Qed.
 Lemma create_spec :
  forall l x r y,  InT y (create l x r) <-> eq_elt y x \/ InT y l \/ InT y r.
 Proof.
- unfold create; split; [ inversion_clear 1 | ]; intuition.
+ intros l x r y; unfold create; rewrite In_node_iff; tauto.
 Qed.
 
 Instance create_ok l x r `(Ok l, Ok r, lt_tree x l, gt_tree x r) :
  Ok (create l x r).
 Proof.
- unfold create; auto with datacert.
+ unfold create; apply bst_Ok; constructor; try apply ok; assumption.
 Qed.
 
 Lemma bal_spec : forall l x r y,
  InT y (bal l x r) <-> Oeset.compare Elt y x = Eq \/ InT y l \/ InT y r.
 Proof.
  intros l x r; functional induction (bal l x r); intros; try clear e0;
- rewrite !create_spec; intuition_in.
+ rewrite !create_spec, ?In_node_iff; intuition_in.
 Qed.
 
 Instance bal_ok l x r `(Ok l, Ok r, lt_tree x l, gt_tree x r) :
@@ -919,9 +965,16 @@ Qed.
 Lemma add_spec' : forall s x y,
  InT y (add x s) <-> eq_elt y x \/ InT y s.
 Proof.
- induct s x; try rewrite ?bal_spec, ?IHl, ?IHr; intuition_in.
- apply IsRoot.
- apply (Oeset.compare_eq_trans Elt _ _ _ H1 H).
+ induction s as [|l IHl x' r IHr h]; simpl; intros x y.
+ - rewrite In_node_iff; intuition_in.
+ - destruct (Oeset.compare Elt x x') eqn:Hcmp.
+   + split; intro H.
+     * right; assumption.
+     * destruct H as [Hyx | Hnode].
+       -- apply IsRoot; apply (Oeset.compare_eq_trans Elt _ _ _ Hyx Hcmp).
+       -- assumption.
+   + rewrite bal_spec, IHl, In_node_iff; intuition_in.
+   + rewrite bal_spec, IHr, In_node_iff; intuition_in.
 Qed.
 
 Lemma add_spec : forall s x y `{Ok s},
@@ -964,12 +1017,11 @@ Lemma join_spec : forall l x r y,
  InT y (join l x r) <-> Oeset.compare Elt y x = Eq \/ InT y l \/ InT y r.
 Proof.
  join_tac l.
- simpl.
- rewrite add_spec'; intuition_in.
- rewrite add_spec'; intuition_in.
- rewrite bal_spec, Hlr; clear Hlr Hrl; intuition_in.
- rewrite bal_spec, Hrl; clear Hlr Hrl; intuition_in.
- apply create_spec.
+ - simpl; rewrite add_spec'; intuition_in.
+ - rewrite add_spec'; intuition_in.
+ - rewrite bal_spec, Hlr, ?In_node_iff; intuition_in.
+ - rewrite bal_spec, Hrl, ?In_node_iff; intuition_in.
+ - rewrite create_spec; intuition_in.
 Qed.
 
 Instance join_ok : forall l x r `(Ok l, Ok r, lt_tree x l, gt_tree x r),
@@ -989,7 +1041,7 @@ Lemma remove_min_spec : forall l x r h y,
   Oeset.compare Elt y (remove_min l x r)#2 = Eq \/ InT y (remove_min l x r)#1.
 Proof.
  intros l x r; functional induction (remove_min l x r); simpl in *; intros.
- intuition_in.
+ rewrite In_node_iff; intuition_in.
  rewrite bal_spec, In_node_iff, IHp, e0; simpl; intuition.
 Qed.
 
@@ -1057,26 +1109,80 @@ Lemma remove_spec : forall s x y `{Ok s},
  (InT y (remove x s) <-> InT y s /\ ~ eq_elt y x).
 Proof.
  induct s x.
- intuition_in.
- rewrite merge_spec; intuition; [order|order|intuition_in].
- rewrite (proper_e_e_lt_elt H (Oeset.compare_eq_sym _ _ _ H0)), Oeset.compare_eq_refl; discriminate.
- rewrite Oeset.compare_lt_gt, (Oeset.compare_eq_trans Elt y x x' H H0); discriminate.
- apply False_rec; apply H6; apply (Oeset.compare_eq_trans Elt) with x'; auto with datacert.
- rewrite bal_spec, IHl; clear IHl IHr; intuition; [order|order|intuition_in].
- assert (K : Oeset.compare Elt x x' = Eq).
- apply Oeset.compare_eq_trans with y; auto with datacert.
- rewrite K in H0; discriminate H0.
-  assert (K : Oeset.compare Elt y x' = Lt).
- apply Oeset.compare_eq_lt_trans with x; auto.
- rewrite Oeset.compare_lt_gt, K; discriminate.
- rewrite bal_spec, IHr; clear IHl IHr; intuition; [order|order|intuition_in].
- assert (K : Oeset.compare Elt x x' = Eq).
- apply Oeset.compare_eq_trans with y; auto with datacert.
- rewrite K in H0; discriminate H0.
- assert (K : Oeset.compare Elt x' y = Lt).
- apply Oeset.compare_lt_eq_trans with x; auto with datacert.
- rewrite Oeset.compare_lt_gt, H0; apply refl_equal.
- rewrite Oeset.compare_lt_gt, K; discriminate.
+ - intuition_in.
+ - rewrite merge_spec, In_node_iff; split.
+   + intros [Hy | Hy].
+     * split.
+       -- left; assumption.
+       -- intro Hyx.
+          assert (K : Oeset.compare Elt y x' = Eq).
+          { apply (Oeset.compare_eq_trans Elt) with x; assumption. }
+          generalize (H3 _ Hy); rewrite K; discriminate.
+     * split.
+       -- right; right; assumption.
+       -- intro Hyx.
+          assert (K : Oeset.compare Elt x' y = Eq).
+          { apply (Oeset.compare_eq_trans Elt) with x.
+            - apply Oeset.compare_eq_sym; assumption.
+            - apply Oeset.compare_eq_sym; assumption. }
+          generalize (H4 _ Hy); rewrite K; discriminate.
+   + intros [[Hy | [Hy | Hy]] Hneq].
+     * left; assumption.
+     * apply False_rec; apply Hneq.
+       apply (Oeset.compare_eq_trans Elt) with x'.
+       -- assumption.
+       -- apply Oeset.compare_eq_sym; assumption.
+     * right; assumption.
+ - rewrite bal_spec, (IHl x y H1), In_node_iff; split.
+   + intros [Hyroot | [[Hyl Hneq] | Hyr]].
+     * split.
+       -- right; left; assumption.
+       -- intro Hyx.
+          assert (K : Oeset.compare Elt x x' = Eq).
+          { apply (Oeset.compare_eq_trans Elt) with y.
+            - apply Oeset.compare_eq_sym; assumption.
+            - assumption. }
+          rewrite H0 in K; discriminate.
+     * split.
+       -- left; assumption.
+       -- assumption.
+     * split.
+       -- right; right; assumption.
+       -- intro Hyx.
+          assert (K : Oeset.compare Elt x' x = Lt).
+          { apply (Oeset.compare_lt_eq_trans Elt) with y.
+            - apply H4; assumption.
+            - assumption. }
+          rewrite Oeset.compare_lt_gt, H0 in K; discriminate.
+   + intros [[Hyl | [Hyroot | Hyr]] Hneq].
+     * right; left; split; assumption.
+     * left; assumption.
+     * right; right; assumption.
+ - rewrite bal_spec, (IHr x y H2), In_node_iff; split.
+   + intros [Hyroot | [Hyl | [Hyr Hneq]]].
+     * split.
+       -- right; left; assumption.
+       -- intro Hyx.
+          assert (K : Oeset.compare Elt x x' = Eq).
+          { apply (Oeset.compare_eq_trans Elt) with y.
+            - apply Oeset.compare_eq_sym; assumption.
+            - assumption. }
+          rewrite H0 in K; discriminate.
+     * split.
+       -- left; assumption.
+       -- intro Hyx.
+          assert (K : Oeset.compare Elt x x' = Lt).
+          { apply (Oeset.compare_eq_lt_trans Elt) with y.
+            - apply Oeset.compare_eq_sym; assumption.
+            - apply H3; assumption. }
+          rewrite H0 in K; discriminate.
+     * split.
+       -- right; right; assumption.
+       -- assumption.
+   + intros [[Hyl | [Hyroot | Hyr]] Hneq].
+     * right; left; assumption.
+     * left; assumption.
+     * right; right; split; assumption.
 Qed.
 
 Instance remove_ok s x `(Ok s) : Ok (remove x s).
@@ -1244,112 +1350,189 @@ Lemma split_spec1 : forall s x y `{Ok s},
  (InT y (split x s)#l <-> InT y s /\ lt_elt y x).
 Proof.
  induction s as [ | l IHl a r IHr h].
- intuition_in.
- inversion H0.
- simpl; intros x y.
- case_eq (Oeset.compare Elt x a); intro Cxa.
- (* 1/3 *)
- intuition_in; order.
- intro; apply Oeset.compare_lt_eq_trans with a; auto with datacert.
- assert (K : Oeset.compare Elt y x = Eq).
- apply Oeset.compare_eq_trans with a; auto with datacert.
- rewrite K in H2; discriminate H2.
- intro H1;  assert (K : Oeset.compare Elt x a = Gt).
- rewrite Oeset.compare_lt_gt, CompOpp_iff.
- apply Oeset.compare_lt_trans with y; auto.
- rewrite K in Cxa; discriminate Cxa.
- (* 1/2 *)
- intro H; inversion H; subst.
- specialize (IHl x y).
- destruct (split x l); simpl in *. rewrite IHl; intuition.
- inversion H3; subst.
- (* 1/4 *)
- assert (K : Oeset.compare Elt x a = Gt).
- rewrite Oeset.compare_lt_gt, CompOpp_iff.
- apply Oeset.compare_eq_lt_trans with y; auto with datacert.
- rewrite K in Cxa; discriminate Cxa.
- (* 1/3 *)
- assumption.
- (* 1/2 *)
- generalize (H7 _ H9).
- rewrite Oeset.compare_lt_gt, (Oeset.compare_lt_trans Elt _ _ _ H8 Cxa); discriminate.
- (* 1/1 *)
- intro H; inversion H; subst.
- specialize (IHr x y).
- destruct (split x r); simpl in *. rewrite join_spec, IHr; intuition_in; order.
- apply Oeset.compare_eq_lt_trans with a; auto.
- rewrite Oeset.compare_lt_gt, Cxa; apply refl_equal.
- intros Cya _; apply Oeset.compare_lt_trans with a; auto.
- rewrite Oeset.compare_lt_gt, Cxa; apply refl_equal.
+ - intuition_in.
+   inversion H0.
+ - simpl; intros x y.
+   case_eq (Oeset.compare Elt x a); intro Cxa.
+   + (* 1/3 *)
+     rewrite In_node_iff; split.
+     * intro Hy; inv; split.
+       -- left; assumption.
+       -- apply Oeset.compare_lt_eq_trans with a.
+          ++ apply H2; assumption.
+          ++ apply Oeset.compare_eq_sym; assumption.
+     * intros [[Hy | [Hy | Hy]] Hlt]; inv.
+       -- assumption.
+       -- assert (K : Oeset.compare Elt y x = Eq).
+          { apply Oeset.compare_eq_trans with a.
+            - assumption.
+            - apply Oeset.compare_eq_sym; assumption. }
+          rewrite K in Hlt; discriminate Hlt.
+       -- assert (K : Oeset.compare Elt a x = Lt).
+          { apply Oeset.compare_lt_trans with y.
+            - apply H3; assumption.
+            - assumption. }
+          assert (E : Oeset.compare Elt a x = Eq) by
+            (apply Oeset.compare_eq_sym; assumption).
+          rewrite E in K; discriminate K.
+   + (* 1/2 *)
+     intro Hok; inv.
+     assert (Ol : Ok l) by (apply bst_Ok; assumption).
+     specialize (IHl x y Ol).
+     destruct (split x l) as [ll b rl]; simpl in *.
+     rewrite IHl, In_node_iff; split.
+     * intros [Hyl Hyx]; split.
+       -- left; assumption.
+       -- assumption.
+     * intros [[Hyl | [Hroot | Hyr]] Hyx].
+       -- split; assumption.
+       -- assert (K : Oeset.compare Elt a x = Lt).
+          { apply Oeset.compare_eq_lt_trans with y.
+            - apply Oeset.compare_eq_sym; assumption.
+            - assumption. }
+          rewrite Oeset.compare_lt_gt, Cxa in K; discriminate.
+       -- assert (K : Oeset.compare Elt a x = Lt).
+          { apply Oeset.compare_lt_trans with y.
+            - match goal with Hgt : gt_tree a r |- _ => apply Hgt; assumption end.
+            - assumption. }
+          rewrite Oeset.compare_lt_gt, Cxa in K; discriminate.
+   + (* 1/1 *)
+     intro Hok; inv.
+     assert (Or : Ok r) by auto with datacert.
+     specialize (IHr x y Or).
+     destruct (split x r) as [rl b rr]; simpl in *.
+     assert (Axl : Oeset.compare Elt a x = Lt) by
+       (rewrite Oeset.compare_lt_gt, Cxa; apply refl_equal).
+     rewrite join_spec, IHr, In_node_iff; split.
+     * intros [Hyroot | [Hyl | [Hyr Hyx]]].
+       -- split.
+          ++ right; left; assumption.
+          ++ apply Oeset.compare_eq_lt_trans with a; assumption.
+       -- split.
+          ++ left; assumption.
+          ++ apply Oeset.compare_lt_trans with a.
+             ** match goal with Hlt : lt_tree a l |- _ => apply Hlt; assumption end.
+             ** assumption.
+       -- split.
+          ++ right; right; assumption.
+          ++ assumption.
+     * intros [[Hyl | [Hyroot | Hyr]] Hyx].
+       -- right; left; assumption.
+       -- left; assumption.
+       -- right; right; split; assumption.
 Qed.
 
 Lemma split_spec2 : forall s x y `{Ok s},
  (InT y (split x s)#r <-> InT y s /\ lt_elt x y).
 Proof.
  induction s as [ | l IHl a r IHr h].
- intuition_in.
- inversion H0.
- simpl; intros x y.
- case_eq (Oeset.compare Elt x a); intro Cxa.
- (* 1/3 *)
- intro H; inversion H; subst.
- intuition_in; order.
- intros Cya _; apply Oeset.compare_eq_lt_trans with a; auto.
- assert (Cxy : Oeset.compare Elt x y = Eq).
- apply Oeset.compare_eq_trans with a; auto with datacert.
- rewrite Cxy in H2; discriminate H2.
- intros Cya _; assert (Cxy : Oeset.compare Elt x y = Gt).
- rewrite Oeset.compare_lt_gt, CompOpp_iff.
- apply Oeset.compare_lt_eq_trans with a; auto with datacert.
- rewrite Cxy in H2; discriminate H2.
- (* 1/2 *)
- intro H; inversion H; subst.
- specialize (IHl x y).
- destruct (split x l); simpl in *. rewrite join_spec, IHl; intuition.
- (* 1/4 *)
- apply Oeset.compare_lt_eq_trans with a; auto with datacert.
- (* 1/3 *)
- generalize (H7 _ H2); apply (Oeset.compare_lt_trans Elt _ _ _ Cxa).
- (* 1/2 *)
- inversion H3; subst; intuition.
- (* 1/1 *)
- intro H; inversion H; subst.
- specialize (IHr x y).
- destruct (split x r); simpl in *. rewrite IHr; intuition_in; order.
- assert (Cxy : Oeset.compare Elt x y = Gt).
- rewrite Oeset.compare_lt_gt, CompOpp_iff in Cxa; simpl in Cxa.
- rewrite Oeset.compare_lt_gt, CompOpp_iff.
- apply Oeset.compare_eq_lt_trans with a; auto.
- rewrite Cxy in H8; discriminate H8.
- intros Cya _.
-  assert (Dxa : Oeset.compare Elt x a = Lt).
- apply Oeset.compare_lt_trans with y; auto.
- rewrite Dxa in Cxa; discriminate Cxa.
+ - intuition_in.
+   inversion H0.
+ - simpl; intros x y.
+   case_eq (Oeset.compare Elt x a); intro Cxa.
+   + intro Hok; inv.
+     rewrite In_node_iff; split.
+     * intro Hyr; split.
+       -- right; right; assumption.
+       -- apply Oeset.compare_eq_lt_trans with a.
+          ++ assumption.
+          ++ match goal with Hgt : gt_tree a r |- _ => apply Hgt; assumption end.
+     * intros [[Hyl | [Hroot | Hyr]] Hxy].
+       -- assert (K : Oeset.compare Elt x a = Lt).
+          { apply Oeset.compare_lt_trans with y.
+            - assumption.
+            - match goal with Hlt : lt_tree a l |- _ => apply Hlt; assumption end. }
+          rewrite Cxa in K; discriminate.
+       -- assert (K : Oeset.compare Elt x y = Eq).
+          { apply Oeset.compare_eq_trans with a.
+            - assumption.
+            - apply Oeset.compare_eq_sym; assumption. }
+          rewrite K in Hxy; discriminate.
+       -- assumption.
+   + intro Hok; inv.
+     assert (Ol : Ok l) by auto with datacert.
+     specialize (IHl x y Ol).
+     destruct (split x l) as [ll b rl]; simpl in *.
+     rewrite join_spec, IHl, In_node_iff; split.
+     * intros [Hyroot | [[Hyl Hxy] | Hyr]].
+       -- split.
+          ++ right; left; assumption.
+          ++ apply Oeset.compare_lt_eq_trans with a.
+             ** assumption.
+             ** apply Oeset.compare_eq_sym; assumption.
+       -- split.
+          ++ left; assumption.
+          ++ assumption.
+       -- split.
+          ++ right; right; assumption.
+          ++ apply Oeset.compare_lt_trans with a.
+             ** assumption.
+             ** match goal with Hgt : gt_tree a r |- _ => apply Hgt; assumption end.
+     * intros [[Hyl | [Hroot | Hyr]] Hxy].
+       -- right; left; split; assumption.
+       -- left; assumption.
+       -- right; right; assumption.
+   + intro Hok; inv.
+     assert (Or : Ok r) by auto with datacert.
+     specialize (IHr x y Or).
+     destruct (split x r) as [rl b rr]; simpl in *.
+     rewrite IHr, In_node_iff; split.
+     * intros [Hyr Hxy]; split.
+       -- right; right; assumption.
+       -- assumption.
+     * intros [[Hyl | [Hroot | Hyr]] Hxy].
+       -- assert (K : Oeset.compare Elt x a = Lt).
+          { apply Oeset.compare_lt_trans with y.
+            - assumption.
+            - match goal with Hlt : lt_tree a l |- _ => apply Hlt; assumption end. }
+          rewrite Cxa in K; discriminate.
+       -- assert (K : Oeset.compare Elt x a = Lt).
+          { apply Oeset.compare_lt_eq_trans with y; assumption. }
+          rewrite Cxa in K; discriminate.
+       -- split; assumption.
 Qed.
 
 Lemma split_spec3 : forall s x `{Ok s},
  ((split x s)#b = true <-> InT x s).
 Proof.
  induction s as [ | l IHl a r IHr h].
- intuition_in.
- simpl; intros x H.
+ - simpl; split; intro Hleaf.
+   + discriminate Hleaf.
+   + inversion Hleaf.
+ - simpl; intros x Hok.
  case_eq (Oeset.compare Elt x a); intro Cxa.
  (* 1/3 *)
- intuition_in.
+ + split; intro Hpresent.
+   * apply IsRoot; assumption.
+   * reflexivity.
  (* 1/2 *)
- specialize (IHl x).
- destruct (split x l); simpl in *. rewrite IHl; intuition_in; order.
- (* 1/3 *)
- rewrite Cxa in H; discriminate H.
- (* 1/2 *)
- rewrite Oeset.compare_lt_gt, Cxa; discriminate.
+ + inv.
+   assert (Ol : Ok l) by auto with datacert.
+   specialize (IHl x Ol).
+   destruct (split x l) as [ll b rl]; simpl in *.
+   rewrite IHl; split.
+   * intro Hleft; apply InLeft; assumption.
+   * intro Hnode; rewrite In_node_iff in Hnode.
+     destruct Hnode as [Hleft | [Hroot | Hright]].
+     -- assumption.
+     -- rewrite Cxa in Hroot; discriminate Hroot.
+     -- assert (Axl : Oeset.compare Elt a x = Lt) by
+          (match goal with Hgt : gt_tree a r |- _ => apply Hgt; assumption end).
+        rewrite Oeset.compare_lt_gt, Axl in Cxa; discriminate Cxa.
  (* 1/1 *)
- specialize (IHr x).
- destruct (split x r); simpl in *. rewrite IHr; intuition_in; order.
- (* 1/2 *)
- rewrite Cxa in H; discriminate H.
- (* 1/1 *)
- rewrite Cxa; discriminate.
+ + inv.
+   assert (Or : Ok r) by auto with datacert.
+   specialize (IHr x Or).
+   destruct (split x r) as [rl b rr]; simpl in *.
+   rewrite IHr; split.
+   * intro Hright; apply InRight; assumption.
+   * intro Hnode; rewrite In_node_iff in Hnode.
+     destruct Hnode as [Hleft | [Hroot | Hright]].
+     -- assert (K : Oeset.compare Elt x a = Lt) by
+          (match goal with Hlt : lt_tree a l |- _ => apply Hlt; assumption end).
+        rewrite Cxa in K; discriminate K.
+     -- rewrite Cxa in Hroot; discriminate Hroot.
+     -- assumption.
 Qed.
 
 Lemma split_ok : forall s x `{Ok s}, Ok (split x s)#l /\ Ok (split x s)#r.
@@ -1399,18 +1582,27 @@ Proof.
  (* Ok join *)
  apply join_ok; auto with *; intro y; rewrite ?IHi1, ?IHi2; intuition.
  (* InT join *)
- rewrite join_spec, IHi1, IHi2, split_spec1, split_spec2; intuition_in.
- rewrite (eq_elt_InT_compat H5).
- rewrite <- split_spec3; auto.
+ rewrite join_spec, IHi1, IHi2, split_spec1, split_spec2; intuition_in;
+ try (apply InLeft; assumption);
+ try (apply InRight; assumption);
+ try (apply IsRoot; assumption);
+ try (rewrite (eq_elt_InT_compat H5); rewrite <- split_spec3; auto).
 (* Ok concat *)
  apply concat_ok; auto with *; intros y1 y2; rewrite IHi1, IHi2; intuition; order.
  do 2 intro; apply (Oeset.compare_lt_trans Elt y1 x1 y2); assumption.
  (* InT concat *)
- rewrite concat_spec, IHi1, IHi2, split_spec1, split_spec2; auto.
- intuition_in.
- absurd (InT x1 s2).
-  rewrite <- split_spec3; auto; congruence.
-  rewrite <- (eq_elt_InT_compat H4); assumption.
+ rewrite concat_spec, IHi1, IHi2, split_spec1, split_spec2; auto;
+ intuition_in;
+ try (apply InLeft; assumption);
+ try (apply InRight; assumption);
+ try (left; repeat split; assumption);
+ try (right; repeat split; assumption);
+ try match goal with
+ | Heq : Oeset.compare Elt ?y x1 = Eq, Hin : InT ?y s2 |- _ =>
+   exfalso; absurd (InT x1 s2);
+   [rewrite <- split_spec3; auto; congruence
+   |rewrite <- (eq_elt_InT_compat Heq); exact Hin]
+ end.
 Qed.
 
 Lemma inter_spec : forall s1 s2 y `{Ok s1, Ok s2},
@@ -1437,18 +1629,30 @@ Proof.
  apply concat_ok; auto; intros y1 y2; rewrite IHi1, IHi2; intuition; order.
  do 2 intro; apply (Oeset.compare_lt_trans Elt y1 x1 y2); assumption.
  (* InT concat *)
- rewrite concat_spec, IHi1, IHi2, split_spec1, split_spec2; intuition_in.
- absurd (InT x1 s2).
- rewrite <- (eq_elt_InT_compat H4); assumption.
-  rewrite <- split_spec3; auto; congruence.
+ rewrite concat_spec, IHi1, IHi2, split_spec1, split_spec2; intuition_in;
+ try (apply InLeft; assumption);
+ try (apply InRight; assumption);
+ try (left; repeat split; assumption);
+ try (right; repeat split; assumption);
+ try match goal with
+ | Heq : Oeset.compare Elt ?y x1 = Eq, Hnot : InT ?y s2 -> False |- _ =>
+   exfalso; apply Hnot; rewrite (eq_elt_InT_compat Heq);
+   rewrite <- split_spec3; auto; congruence
+ end.
  (* Ok join *)
  apply join_ok; auto; intro y; rewrite ?IHi1, ?IHi2; intuition.
  (* InT join *)
  rewrite join_spec, IHi1, IHi2, split_spec1, split_spec2; auto with *.
- intuition_in.
- absurd (InT x1 s2); auto.
-  rewrite <- split_spec3; auto; congruence.
-  rewrite <- (eq_elt_InT_compat H5); assumption.
+ intuition_in;
+ try (apply InLeft; assumption);
+ try (apply InRight; assumption);
+ try (apply IsRoot; assumption);
+ try match goal with
+ | Heq : Oeset.compare Elt ?y x1 = Eq, Hin : InT ?y s2 |- _ =>
+   exfalso; absurd (InT x1 s2); auto;
+   [rewrite <- split_spec3; auto; congruence
+   |rewrite <- (eq_elt_InT_compat Heq); exact Hin]
+ end.
 Qed.
 
 Lemma diff_spec : forall s1 s2 y `{Ok s1, Ok s2},
@@ -1472,21 +1676,41 @@ Proof.
  destruct_split.
  inv.
  rewrite join_spec, IHt1, IHt2, split_spec1, split_spec2; auto with *.
- case_eq (Oeset.compare Elt y x1); intro Cyx1; intuition_in.
- discriminate.
- rewrite H4 in Cyx1; discriminate.
- discriminate.
-  rewrite H4 in Cyx1; discriminate.
-  do 3 right; split; [ | rewrite (Oeset.compare_lt_gt Elt), CompOpp_iff]; assumption.
+ split; intro Hy.
+ - destruct Hy as [Hyx | [[Hyl | [Hys2 Hyx]] | [Hyr | [Hys2 Hxy]]]].
+   + left; apply IsRoot; assumption.
+   + left; apply InLeft; assumption.
+   + right; assumption.
+   + left; apply InRight; assumption.
+   + right; assumption.
+ - destruct Hy as [Hy | Hys2].
+   + rewrite In_node_iff in Hy.
+     destruct Hy as [Hyl | [Hyx | Hyr]].
+     * right; left; left; assumption.
+     * left; assumption.
+     * right; right; left; assumption.
+   + case_eq (Oeset.compare Elt y x1); intro Cyx1.
+     * left; reflexivity.
+     * right; left; right; split; [assumption | reflexivity].
+     * right; right; right; split; [assumption | ].
+       rewrite (Oeset.compare_lt_gt Elt), CompOpp_iff; assumption.
 Qed.
 
 Instance union_ok s1 s2 : forall `(Ok s1, Ok s2), Ok (union s1 s2).
 Proof.
- functional induction union s1 s2; intros B1 B2; auto.
- factornode _x0 _x1 _x2 _x3 as s2; destruct_split; inv.
- apply join_ok; auto with *.
- intro y; rewrite union_spec, split_spec1; intuition_in.
- intro y; rewrite union_spec, split_spec2; intuition_in.
+	 functional induction union s1 s2; intros B1 B2; auto.
+	 factornode _x0 _x1 _x2 _x3 as s2; destruct_split; inv.
+	 apply join_ok; auto with *.
+	 - unfold lt_tree; intros y Hy.
+	   rewrite union_spec in Hy; auto with *.
+	   destruct Hy as [Hy | Hy].
+	   + apply H2; assumption.
+	   + rewrite split_spec1 in Hy; auto with *; intuition.
+	 - unfold gt_tree; intros y Hy.
+	   rewrite union_spec in Hy; auto with *.
+	   destruct Hy as [Hy | Hy].
+	   + apply H3; assumption.
+	   + rewrite split_spec2 in Hy; auto with *; intuition.
 Qed.
 
 
@@ -1495,13 +1719,29 @@ Qed.
 Lemma elements_spec1' : forall s acc x,
  InA eq_elt x (elements_aux acc s) <-> InT x s \/ InA eq_elt x acc.
 Proof.
- induction s as [ | l Hl x r Hr h ]; simpl; auto.
- intuition.
- inversion H0.
- intros.
- rewrite Hl.
- destruct (Hr acc x0); clear Hl Hr.
- intuition; inversion_clear H3; intuition.
+ induction s as [ | l IHl a r IHr h ]; simpl; intros acc x.
+ - split; intro H.
+   + right; assumption.
+   + destruct H as [H | H].
+     * inversion H.
+     * assumption.
+ - rewrite IHl.
+   split; intro H.
+   + destruct H as [H | H].
+     * left; apply InLeft; assumption.
+     * inversion_clear H as [ | ? ? Htail].
+       -- left; apply IsRoot; assumption.
+       -- rewrite IHr in Htail.
+          destruct Htail as [Htail | Htail].
+          ++ left; apply InRight; assumption.
+          ++ right; assumption.
+   + destruct H as [H | H].
+     * rewrite In_node_iff in H.
+       destruct H as [H | [H | H]].
+       -- left; assumption.
+       -- right; constructor; assumption.
+       -- right; constructor 2; rewrite IHr; left; assumption.
+     * right; constructor 2; rewrite IHr; right; assumption.
 Qed.
 
 Lemma elements_spec1 : forall s x, InA eq_elt x (elements s) <-> InT x s.
@@ -1514,23 +1754,29 @@ Lemma elements_spec2' : forall s acc `{Ok s}, sort lt_elt acc ->
  (forall x y : elt, InA eq_elt x acc -> InT y s -> lt_elt y x) ->
  sort lt_elt (elements_aux acc s).
 Proof.
- induction s as [ | l Hl y r Hr h]; simpl; intuition.
- inv.
- apply Hl; auto.
- constructor.
- apply Hr; auto with datacert.
- assert (E := equiv_eq_elt).
- apply (InA_InfA E (ltA := fun x y => Oeset.compare Elt x y = Lt)).
- intros.
- destruct (elements_spec1' r acc y0); intuition.
- intros.
- inversion_clear H.
- order.
- intro; apply Oeset.compare_lt_eq_trans with y; auto with datacert.
- rewrite (elements_spec1' r acc x) in H7; destruct H7 as [H7 | H7].
- generalize (H5 _ H7).
- apply (Oeset.compare_lt_trans Elt); apply (H4 _ H6).
- apply H1; [ | apply InLeft]; assumption.
+ induction s as [ | l IHl a r IHr h]; simpl; intros acc Hok Hacc Hsep.
+ - assumption.
+ - inv.
+   apply IHl; auto.
+	   + constructor.
+	     * apply IHr; auto with datacert.
+	     * apply (InA_InfA equiv_eq_elt (ltA := lt_elt)).
+       intros x Hx.
+       rewrite elements_spec1' in Hx.
+       destruct Hx as [Hx | Hx].
+       -- match goal with Hgt : gt_tree a r |- _ => apply Hgt; assumption end.
+       -- apply Hsep; [assumption | apply IsRoot; apply Oeset.compare_eq_refl].
+   + intros x y Hx Hy.
+     inversion_clear Hx as [ | ? ? Htail].
+     * apply Oeset.compare_lt_eq_trans with a.
+       -- match goal with Hlt : lt_tree a l |- _ => apply Hlt; assumption end.
+       -- apply Oeset.compare_eq_sym; assumption.
+     * rewrite elements_spec1' in Htail.
+       destruct Htail as [Htail | Htail].
+       -- apply Oeset.compare_lt_trans with a.
+          ++ match goal with Hlt : lt_tree a l |- _ => apply Hlt; assumption end.
+          ++ match goal with Hgt : gt_tree a r |- _ => apply Hgt; assumption end.
+       -- apply Hsep; [assumption | apply InLeft; assumption].
 Qed.
 
 Lemma elements_spec2 : forall s `(Ok s), sort lt_elt (elements s).
@@ -1554,7 +1800,7 @@ Proof.
  simple induction s; simpl in |- *; intuition.
  rewrite <- H.
  simpl in |- *.
- rewrite <- H0; omega.
+ rewrite <- H0; lia.
 Qed.
 
 Lemma elements_cardinal : forall s : tree, cardinal s = length (elements s).
@@ -2288,20 +2534,25 @@ Qed.
 Lemma exists_spec : forall s f, Proper (eq_elt==>eq) f ->
  (exists_ f s = true <-> Exists (fun x => f x = true) s).
 Proof.
- split.
- induction s; simpl; intros; rewrite <- ?orb_lazy_alt in *.
- discriminate.
- destruct (orb_true_elim _ _ H0) as [H1|H1].
- destruct (orb_true_elim _ _ H1) as [H2|H2].
- exists e; auto with datacert.
- destruct (IHs1 H2); auto with datacert; exists x; intuition.
- destruct (IHs2 H1); auto with datacert; exists x; intuition.
- (* <- *)
- induction s; simpl; destruct 1 as (x,(U,V)); inv; rewrite <- ?orb_lazy_alt.
- rewrite (H _ _ (Oeset.compare_eq_sym Elt _ _ H0)); rewrite V; auto with datacert.
- apply orb_true_intro; left.
- apply orb_true_intro; right; apply IHs1; auto with datacert; exists x; auto with datacert.
- apply orb_true_intro; right; apply IHs2; auto with datacert; exists x; auto with datacert.
+ intros s f Hf; split.
+ - induction s as [ | l IHl e r IHr h]; simpl; intro Hex; rewrite <- ?orb_lazy_alt in *.
+   + discriminate.
+   + destruct (orb_true_elim _ _ Hex) as [Hleft | Hright].
+     * destruct (orb_true_elim _ _ Hleft) as [He | Hl].
+       -- exists e; split; [apply IsRoot; apply Oeset.compare_eq_refl | assumption].
+       -- destruct (IHl Hl) as (x,(Hin,Hx)).
+          exists x; split; [apply InLeft; assumption | assumption].
+     * destruct (IHr Hright) as (x,(Hin,Hx)).
+       exists x; split; [apply InRight; assumption | assumption].
+ - induction s as [ | l IHl e r IHr h]; simpl; intros (x,(Hin,Hx)); inv; rewrite <- ?orb_lazy_alt.
+   + match goal with Heq : Oeset.compare Elt x e = Eq |- _ =>
+       rewrite <- (Hf _ _ Heq); rewrite Hx; reflexivity
+     end.
+   + apply orb_true_intro; left.
+     apply orb_true_intro; right.
+     apply IHl; exists x; split; assumption.
+   + apply orb_true_intro; right.
+     apply IHr; exists x; split; assumption.
 Qed.
 
 
@@ -2336,71 +2587,94 @@ Lemma subsetl_spec : forall subset_l1 l1 x1 h1 s2
  (forall s `{Ok s}, (subset_l1 s = true <-> Subset l1 s)) ->
  (subsetl subset_l1 x1 s2 = true <-> Subset (Node l1 x1 Leaf h1) s2 ).
 Proof.
- induction s2 as [|l2 IHl2 x2 r2 IHr2 h2]; simpl; intros.
- unfold Subset; intuition; try discriminate.
- assert (H': InT x1 Leaf) by auto with datacert; inversion H'.
- specialize (IHl2 H).
- specialize (IHr2 H).
- inv.
- case_eq (Oeset.compare Elt x1 x2); intro.
-
- rewrite H1 by auto with datacert; clear H1 IHl2 IHr2.
- unfold Subset. intuition_in.
- assert (eq_elt a x2).
- apply (Oeset.compare_eq_trans Elt _ _ _ H10 H).
- intuition_in.
- assert (InT a (Node l2 x2 r2 h2)) by auto with datacert; intuition_in; order.
- intro Cax1; assert (Dax1 : Oeset.compare Elt a x1 = Eq).
- apply Oeset.compare_eq_trans with x2; auto with datacert.
- rewrite Dax1 in Cax1; discriminate Cax1.
- intros Cax2 Cax1; assert (Dax1 : Oeset.compare Elt a x1 = Gt).
- rewrite Oeset.compare_lt_gt, CompOpp_iff; simpl.
- apply Oeset.compare_eq_lt_trans with x2; auto with datacert.
- rewrite Dax1 in Cax1; discriminate Cax1.
-
- rewrite IHl2 by auto with datacert; clear H1 IHl2 IHr2.
- unfold Subset. intuition_in.
- assert (K := H6 a (IsRoot _ _ _ H10)); inversion K; subst.
- assert (Cx : Oeset.compare Elt x1 x2 = Eq).
- apply Oeset.compare_eq_trans with a; auto with datacert.
- rewrite Cx in H; discriminate H.
- assumption.
- generalize (H5 _ H11).
- intro Cx2a.
- assert (Cx : Oeset.compare Elt a x1 = Gt).
- rewrite Oeset.compare_lt_gt, CompOpp_iff; simpl.
- apply Oeset.compare_lt_trans with x2; auto with datacert.
- rewrite Cx in H10; discriminate H10.
- generalize (H7 _ H10).
- intro Cax1.
- assert (K := H6 a (InLeft _ _ _ H10)); inversion K; subst.
- assert (Cax2 : Oeset.compare Elt a x2 = Lt).
- apply Oeset.compare_lt_trans with x1; auto with datacert.
- rewrite Cax2 in H11; discriminate H11.
- assumption.
- assert (Cx2a := H5 _ H11). 
- assert (Cx : Oeset.compare Elt x1 x2 = Gt).
- rewrite Oeset.compare_lt_gt, CompOpp_iff; simpl.
- apply Oeset.compare_lt_trans with a; auto with datacert.
- rewrite Cx in H; discriminate H.
-
- unfold Subset. intuition_in.
- constructor 3. 
- rewrite <- andb_lazy_alt, Bool.andb_true_iff, mem_spec in H11.
- rewrite (eq_elt_InT_compat H14); apply H11.
- assumption.
- rewrite <- andb_lazy_alt, Bool.andb_true_iff in H11; destruct H11 as [_ H11]; rewrite H1 in H11.
- apply H11; assumption.
- constructor; trivial.
- rewrite <- andb_lazy_alt, Bool.andb_true_iff; split.
- assert (K := H11 x1 (IsRoot _ _ _ (Oeset.compare_eq_refl Elt x1))).
- inversion K; subst.
- rewrite H14 in H; discriminate H.
- generalize (H4 _ H14); rewrite H; discriminate.
- rewrite mem_spec; assumption.
- rewrite H1.
- intros y Hy; apply H11; apply InLeft; assumption.
- constructor; trivial.
+ intros subset_l1 l1 x1 h1 s2.
+ induction s2 as [|l2 IHl2 x2 r2 IHr2 h2]; simpl;
+ intros Hok1 Hok2 Hsubset.
+ - split; intro H.
+   + discriminate H.
+   + specialize (H x1 (IsRoot _ _ _ (Oeset.compare_eq_refl Elt x1))).
+     inversion H.
+ - assert (Bst1 : bst (Node l1 x1 Leaf h1)) by (apply ok).
+   inversion Bst1; subst.
+   assert (Bst2 : bst (Node l2 x2 r2 h2)) by (apply ok).
+   inversion Bst2; subst.
+   assert (Ok_l2 : Ok l2) by (apply bst_Ok; assumption).
+   assert (Ok_r2 : Ok r2) by (apply bst_Ok; assumption).
+   assert (Ok_s2 : Ok (Node l2 x2 r2 h2)) by (apply bst_Ok; constructor; assumption).
+   destruct (Oeset.compare Elt x1 x2) eqn:Cx12.
+   + rewrite (Hsubset l2 Ok_l2); split.
+     * intros Hl2 y Hy.
+       rewrite In_node_iff in Hy.
+       destruct Hy as [Hy | [Hy | Hy]].
+       -- apply InLeft; apply Hl2; assumption.
+       -- apply IsRoot; apply Oeset.compare_eq_trans with x1; assumption.
+       -- inversion Hy.
+     * intros Hnode y Hy.
+       assert (Ky : InT y (Node l2 x2 r2 h2)).
+       { apply Hnode; apply InLeft; assumption. }
+       rewrite In_node_iff in Ky.
+       destruct Ky as [Ky | [Ky | Ky]].
+       -- assumption.
+       -- assert (Dy : Oeset.compare Elt y x1 = Eq).
+          { apply Oeset.compare_eq_trans with x2.
+            - assumption.
+            - apply Oeset.compare_eq_sym; assumption. }
+          assert (Ly : Oeset.compare Elt y x1 = Lt) by
+            (match goal with Hlt : lt_tree x1 l1 |- _ => apply Hlt; assumption end).
+          rewrite Dy in Ly; discriminate.
+       -- assert (Dx2x1 : Oeset.compare Elt x2 x1 = Lt).
+          { apply Oeset.compare_lt_trans with y.
+            - match goal with Hgt : gt_tree x2 r2 |- _ => apply Hgt; assumption end.
+            - match goal with Hlt : lt_tree x1 l1 |- _ => apply Hlt; assumption end. }
+          assert (Ex2x1 : Oeset.compare Elt x2 x1 = Eq) by
+            (apply Oeset.compare_eq_sym; assumption).
+          rewrite Ex2x1 in Dx2x1; discriminate.
+   + specialize (IHl2 Hok1 Ok_l2 Hsubset).
+     rewrite IHl2; split.
+     * intros Hleft y Hy; apply InLeft; apply Hleft; assumption.
+     * intros Hnode y Hy.
+       assert (Ky : InT y (Node l2 x2 r2 h2)) by (apply Hnode; assumption).
+       assert (Lyx2 : Oeset.compare Elt y x2 = Lt).
+       { rewrite In_node_iff in Hy.
+         destruct Hy as [Hy | [Hy | Hy]].
+         - apply Oeset.compare_lt_trans with x1.
+           + match goal with Hlt : lt_tree x1 l1 |- _ => apply Hlt; assumption end.
+           + assumption.
+         - apply Oeset.compare_eq_lt_trans with x1; assumption.
+         - inversion Hy. }
+       rewrite In_node_iff in Ky.
+       destruct Ky as [Ky | [Ky | Ky]].
+       -- assumption.
+       -- rewrite Ky in Lyx2; discriminate.
+       -- assert (Dx2x2 : Oeset.compare Elt x2 x2 = Lt).
+          { apply Oeset.compare_lt_trans with y.
+            - match goal with Hgt : gt_tree x2 r2 |- _ => apply Hgt; assumption end.
+            - assumption. }
+          rewrite Oeset.compare_eq_refl in Dx2x2; discriminate.
+   + rewrite <- andb_lazy_alt, Bool.andb_true_iff.
+     rewrite (Hsubset (Node l2 x2 r2 h2) Ok_s2).
+     split.
+     * intros [Hx1r2 Hl1s2] y Hy.
+	       rewrite In_node_iff in Hy.
+	       destruct Hy as [Hy | [Hy | Hy]].
+	       -- apply Hl1s2; assumption.
+	       -- assert (Hx1inr2 : InT x1 r2).
+	          { rewrite <- (mem_spec x1 Ok_r2); assumption. }
+	          assert (Hyr2 : InT y r2).
+	          { rewrite (eq_elt_InT_compat Hy); assumption. }
+	          constructor 3; assumption.
+	       -- inversion Hy.
+     * intros Hnode; split.
+       -- assert (Kx1 : InT x1 (Node l2 x2 r2 h2)).
+          { apply Hnode; apply IsRoot; apply Oeset.compare_eq_refl. }
+          rewrite In_node_iff in Kx1.
+          destruct Kx1 as [Kx1 | [Kx1 | Kx1]].
+          ++ assert (Lx1x2 : Oeset.compare Elt x1 x2 = Lt) by
+               (match goal with Hlt : lt_tree x2 l2 |- _ => apply Hlt; assumption end).
+             rewrite Cx12 in Lx1x2; discriminate.
+          ++ rewrite Kx1 in Cx12; discriminate.
+          ++ rewrite mem_spec; assumption.
+       -- intros y Hy; apply Hnode; apply InLeft; assumption.
 Qed.
 
 
@@ -2409,148 +2683,263 @@ Lemma subsetr_spec : forall subset_r1 r1 x1 h1 s2,
  (forall s, bst s -> (subset_r1 s = true <-> Subset r1 s)) ->
  (subsetr subset_r1 x1 s2 = true <-> Subset (Node Leaf x1 r1 h1) s2).
 Proof.
- induction s2 as [|l2 IHl2 x2 r2 IHr2 h2]; simpl; intros.
- unfold Subset; intuition; try discriminate.
- assert (H': InT x1 Leaf) by auto with datacert; inversion H'.
- specialize (IHl2 H).
- specialize (IHr2 H).
- inv.
- case_eq (Oeset.compare Elt x1 x2); intro.
-
- rewrite H1 by auto with datacert; clear H1 IHl2 IHr2.
- unfold Subset. intuition_in.
- apply IsRoot; apply (Oeset.compare_eq_trans Elt _ _ _ H10 H).
- assert (K := H1 a (InRight _ _ _ H9)); inversion K; subst.
-  generalize (H8 _ H9).
-  rewrite Oeset.compare_lt_gt, CompOpp_iff in H11; simpl in H11.
-  rewrite (Oeset.compare_eq_trans Elt _ _ _ H H11); discriminate.
-  generalize (Oeset.compare_lt_trans _ _ _ _ (H8 _ H9) (H4 _ H11)); rewrite H; discriminate.
-  assumption.
-
- rewrite <- andb_lazy_alt, andb_true_iff, H1 by auto with datacert;  clear H1 IHl2 IHr2.
- unfold Subset. intuition_in.
- constructor 2. rewrite (eq_elt_InT_compat H11); rewrite <- mem_spec; auto with datacert.
- assert (K := H1 x1 (IsRoot _ _ _ (Oeset.compare_eq_refl Elt x1))); inversion K; subst.
- rewrite H in H10; discriminate H10.
- rewrite mem_spec; assumption.
- generalize (H5 _ H10); rewrite lt_gt_elt, H; discriminate.
-
- rewrite IHr2 by auto with datacert; clear H1 IHl2 IHr2.
- unfold Subset. intuition_in.
- assert (K := H1 a (IsRoot _ _ _ H10)).
- inversion K; subst.
- rewrite Oeset.compare_lt_gt, CompOpp_iff in H10; simpl in H10.
- rewrite (Oeset.compare_eq_trans _ _ _ _ H10 H11) in H; discriminate H.
- generalize (H4 _ H11).
- rewrite Oeset.compare_lt_gt, CompOpp_iff; simpl.
- rewrite Oeset.compare_lt_gt, CompOpp_iff in H; simpl in H.
- rewrite Oeset.compare_lt_gt, CompOpp_iff in H10; simpl in H10.
- rewrite (Oeset.compare_lt_eq_trans _ _ _ _ H H10); discriminate.
- assumption.
- assert (K := H1 a (InRight _ _ _ H10)).
- inversion K; subst.
- generalize (H8 _ H10).
-  rewrite Oeset.compare_lt_gt, CompOpp_iff; simpl.
- rewrite Oeset.compare_lt_gt, CompOpp_iff in H; simpl in H.
-  rewrite (Oeset.compare_eq_lt_trans _ _ _ _ H11 H); discriminate.
- generalize (Oeset.compare_lt_trans _ _ _ _ (H8 _ H10) (H4 _ H11)); rewrite H; discriminate.
- assumption.
+ intros subset_r1 r1 x1 h1 s2.
+ induction s2 as [|l2 IHl2 x2 r2 IHr2 h2]; simpl; intros Bst1 Bst2 Hsubset.
+ - split; intro H.
+   + discriminate H.
+   + specialize (H x1 (IsRoot _ _ _ (Oeset.compare_eq_refl Elt x1))).
+     inversion H.
+ - inversion Bst1; subst.
+   inversion Bst2; subst.
+   assert (Ok_l2 : Ok l2) by (apply bst_Ok; assumption).
+   assert (Ok_r2 : Ok r2) by (apply bst_Ok; assumption).
+   assert (Ok_s2 : Ok (Node l2 x2 r2 h2)) by (apply bst_Ok; constructor; assumption).
+   destruct (Oeset.compare Elt x1 x2) eqn:Cx12.
+   + rewrite (Hsubset r2 H8); split.
+     * intros Hr2 y Hy.
+       rewrite In_node_iff in Hy.
+       destruct Hy as [Hy | [Hy | Hy]].
+       -- inversion Hy.
+       -- apply IsRoot; apply Oeset.compare_eq_trans with x1; assumption.
+       -- apply InRight; apply Hr2; assumption.
+     * intros Hnode y Hy.
+       assert (Ky : InT y (Node l2 x2 r2 h2)).
+       { apply Hnode; apply InRight; assumption. }
+       rewrite In_node_iff in Ky.
+       destruct Ky as [Ky | [Ky | Ky]].
+       -- assert (Dx1x2 : Oeset.compare Elt x1 x2 = Lt).
+          { apply Oeset.compare_lt_trans with y.
+            - match goal with Hgt : gt_tree x1 r1 |- _ => apply Hgt; assumption end.
+            - match goal with Hlt : lt_tree x2 l2 |- _ => apply Hlt; assumption end. }
+          rewrite Cx12 in Dx1x2; discriminate.
+       -- assert (Dyx1 : Oeset.compare Elt y x1 = Eq).
+          { apply Oeset.compare_eq_trans with x2.
+            - assumption.
+            - apply Oeset.compare_eq_sym; assumption. }
+          assert (Lx1y : Oeset.compare Elt x1 y = Lt) by
+            (match goal with Hgt : gt_tree x1 r1 |- _ => apply Hgt; assumption end).
+          rewrite Oeset.compare_lt_gt, Dyx1 in Lx1y; discriminate.
+       -- assumption.
+   + rewrite <- andb_lazy_alt, Bool.andb_true_iff.
+     rewrite (Hsubset (Node l2 x2 r2 h2) Bst2).
+     split.
+     * intros [Hx1l2 Hr1s2] y Hy.
+       rewrite In_node_iff in Hy.
+       destruct Hy as [Hy | [Hy | Hy]].
+       -- inversion Hy.
+       -- assert (Hx1inl2 : InT x1 l2).
+          { rewrite <- (mem_spec x1 Ok_l2); assumption. }
+          assert (Hyl2 : InT y l2).
+          { rewrite (eq_elt_InT_compat Hy); assumption. }
+          constructor 2; assumption.
+       -- apply Hr1s2; assumption.
+     * intros Hnode; split.
+       -- assert (Kx1 : InT x1 (Node l2 x2 r2 h2)).
+          { apply Hnode; apply IsRoot; apply Oeset.compare_eq_refl. }
+          rewrite In_node_iff in Kx1.
+          destruct Kx1 as [Kx1 | [Kx1 | Kx1]].
+          ++ rewrite mem_spec; assumption.
+          ++ rewrite Kx1 in Cx12; discriminate.
+          ++ assert (Lx2x1 : Oeset.compare Elt x2 x1 = Lt) by
+               (match goal with Hgt : gt_tree x2 r2 |- _ => apply Hgt; assumption end).
+             rewrite Oeset.compare_lt_gt, Lx2x1 in Cx12; discriminate.
+       -- intros y Hy; apply Hnode; apply InRight; assumption.
+   + specialize (IHr2 Bst1 H8 Hsubset).
+     rewrite IHr2; split.
+     * intros Hright y Hy; apply InRight; apply Hright; assumption.
+     * intros Hnode y Hy.
+       assert (Ky : InT y (Node l2 x2 r2 h2)) by (apply Hnode; assumption).
+       assert (Lx2y : Oeset.compare Elt x2 y = Lt).
+	       { rewrite In_node_iff in Hy.
+	         destruct Hy as [Hy | [Hy | Hy]].
+	         - inversion Hy.
+	         - apply Oeset.compare_lt_eq_trans with x1.
+	           + rewrite Oeset.compare_lt_gt, Cx12; reflexivity.
+	           + apply Oeset.compare_eq_sym; assumption.
+	         - apply Oeset.compare_lt_trans with x1.
+           + rewrite Oeset.compare_lt_gt, Cx12; reflexivity.
+           + match goal with Hgt : gt_tree x1 r1 |- _ => apply Hgt; assumption end. }
+       rewrite In_node_iff in Ky.
+	       destruct Ky as [Ky | [Ky | Ky]].
+	       -- assert (Dx2x2 : Oeset.compare Elt x2 x2 = Lt).
+	          { apply Oeset.compare_lt_trans with y.
+	            - assumption.
+	            - match goal with Hlt : lt_tree x2 l2 |- _ => apply Hlt; assumption end. }
+	          rewrite Oeset.compare_eq_refl in Dx2x2; discriminate.
+	       -- assert (Ex2y : Oeset.compare Elt x2 y = Eq) by
+	            (apply Oeset.compare_eq_sym; assumption).
+	          rewrite Ex2y in Lx2y; discriminate.
+	       -- assumption.
 Qed.
 
 Lemma subset_spec : forall s1 s2, Ok s1 -> Ok s2 ->
  ((subset s1 s2 = true <-> Subset s1 s2)).
 Proof.
- induction s1 as [|l1 IHl1 x1 r1 IHr1 h1]; simpl; intros.
- unfold Subset; intuition_in.
- destruct s2 as [|l2 x2 r2 h2]; simpl; intros.
- unfold Subset; intuition_in; try discriminate.
- assert (H': InT x1 Leaf) by auto with datacert; inversion H'.
- inv.
- case_eq (Oeset.compare Elt x1 x2); intro; intuition.
- (* 1/6 *)
- rewrite <- andb_lazy_alt, andb_true_iff, IHl1, IHr1 in H8 by auto with datacert.
- intros y K; inversion K; clear K; subst.
- apply IsRoot; apply Oeset.compare_eq_trans with x1; trivial.
- apply InLeft; apply (proj1 H8); assumption.
- apply InRight; apply (proj2 H8); assumption.
- (* 1/5 *)
- rewrite <- andb_lazy_alt, andb_true_iff, IHl1, IHr1 by auto with datacert.
- split; intros y K.
- assert (J := H8 _ (InLeft _ _ _ K)); inversion J; subst.
- generalize (H6 _ K).
- rewrite Oeset.compare_lt_gt, CompOpp_iff in H; simpl in H.
- rewrite (Oeset.compare_eq_trans Elt _ _ _ H10 H); discriminate.
- assumption.
- generalize (Oeset.compare_lt_trans _ _ _ _  (H4 _ H10) (H6 _ K)); rewrite lt_gt_elt, H; discriminate.
- assert (J := H8 _ (InRight _ _ _ K)); inversion J; subst.
- generalize (H7 _ K).
-  rewrite Oeset.compare_lt_gt, CompOpp_iff in H10; simpl in H10.
- rewrite (Oeset.compare_eq_trans Elt _ _ _ H H10); discriminate.
- generalize (Oeset.compare_lt_trans _ _ _ _  (H7 _ K) (H3 _ H10)); rewrite H; discriminate.
- assumption.
- (* 1/4 *)
- rewrite <- andb_lazy_alt, andb_true_iff, (@subsetl_spec (subset l1) l1 x1 h1) in H8; auto with datacert.
- unfold Subset; intuition_in.
- rewrite IHr1 in H10; auto with datacert.
- (* 1/3 *)
- rewrite <- andb_lazy_alt, andb_true_iff, (@subsetl_spec (subset l1) l1 x1 h1); auto with datacert.
- split.
- intros y K; assert (J : InT y (Node l2 x2 r2 h2)).
-  apply (H8 y); inversion K; subst.
- apply IsRoot; trivial.
- apply InLeft; trivial.
- inversion H10.
- inversion J; subst.
- inversion K; subst.
- rewrite (Oeset.compare_eq_lt_trans Elt y x1 x2 H11 H) in H10; discriminate H10.
- generalize (H6 _ H11).
- rewrite Oeset.compare_lt_gt, CompOpp_iff; simpl.
- rewrite Oeset.compare_lt_gt, CompOpp_iff in H10; simpl in H10.
- rewrite (Oeset.compare_lt_eq_trans Elt x1 x2 y H H10); discriminate.
- inversion H11.
- assumption.
- inversion K; subst.
- generalize (H4 _ H10).
- rewrite Oeset.compare_lt_gt, CompOpp_iff; simpl.
- rewrite (Oeset.compare_eq_lt_trans Elt y x1 x2 H11 H); discriminate.
- generalize (Oeset.compare_lt_trans Elt _ _ _ (H4 _ H10) (H6 _ H11)); rewrite lt_gt_elt, H; discriminate.
- inversion H11.
- (* 1/3 *)
- rewrite IHr1 by auto with datacert; do 2 intro; apply H8; auto with datacert.
- (* 1/2 *)
- rewrite <- andb_lazy_alt, andb_true_iff, (@subsetr_spec (subset r1) r1 x1 h1), IHl1 in H8 by auto with datacert.
- intros y K; inversion K; subst.
- apply InRight; apply (proj1 H8); apply IsRoot; assumption.
- apply (proj2 H8); assumption.
- apply InRight; apply (proj1 H8); apply InRight; assumption.
- (* 1/1 *)
- rewrite <- andb_lazy_alt, andb_true_iff, (@subsetr_spec (subset r1) r1 x1 h1), IHl1 by auto with datacert; split.
- intros y K.
- assert (J : InT y (Node l1 x1 r1 h1)).
- inversion K; subst.
- apply IsRoot; assumption.
- inversion H10.
- apply InRight; assumption.
- assert (L := H8 y J).
- inversion K; subst.
- inversion L; subst.
- rewrite Oeset.compare_lt_gt, CompOpp_iff in H10; simpl in H10.
- rewrite (Oeset.compare_eq_trans Elt _ _ _ H10 H11) in H; discriminate H.
- generalize (H3 _ H11).
- rewrite Oeset.compare_lt_gt, CompOpp_iff; simpl.
- rewrite Oeset.compare_lt_gt, CompOpp_iff in H; simpl in H.
- rewrite Oeset.compare_lt_gt, CompOpp_iff in H10; simpl in H10.
-  rewrite (Oeset.compare_lt_eq_trans Elt _ _ _ H H10); discriminate.
- assumption.
- inversion H10.
- inversion L; subst.
- generalize (H7 _ H10).
- rewrite Oeset.compare_lt_gt, CompOpp_iff; simpl.
- rewrite Oeset.compare_lt_gt, CompOpp_iff in H; simpl in H.
- rewrite (Oeset.compare_eq_lt_trans Elt _ _ _ H11 H); discriminate.
- generalize (Oeset.compare_lt_trans Elt _ _ _ (H7 _ H10) (H3 _ H11)); rewrite H; discriminate.
- assumption.
- intros y K; apply H8; apply InLeft; assumption.
+ induction s1 as [|l1 IHl1 x1 r1 IHr1 h1]; intros s2 Hok1 Hok2; simpl.
+ - split; intro H.
+   + unfold Subset; intros y Hy; inversion Hy.
+   + reflexivity.
+ - destruct s2 as [|l2 x2 r2 h2]; simpl.
+   + split; intro H.
+     * discriminate H.
+     * specialize (H x1 (IsRoot _ _ _ (Oeset.compare_eq_refl Elt x1))).
+       inversion H.
+   + assert (Bst1 : bst (Node l1 x1 r1 h1)) by (apply ok).
+     inversion Bst1; subst.
+     assert (Bst2 : bst (Node l2 x2 r2 h2)) by (apply ok).
+     inversion Bst2; subst.
+     assert (Ok_l1 : Ok l1) by (apply bst_Ok; assumption).
+     assert (Ok_r1 : Ok r1) by (apply bst_Ok; assumption).
+     assert (Ok_l2 : Ok l2) by (apply bst_Ok; assumption).
+     assert (Ok_r2 : Ok r2) by (apply bst_Ok; assumption).
+     assert (Ok_left_node : Ok (Node l1 x1 Leaf h1)).
+     { apply bst_Ok; constructor.
+       - assumption.
+       - constructor.
+       - match goal with Hlt : lt_tree x1 l1 |- _ => exact Hlt end.
+       - apply gt_leaf. }
+     assert (Bst_right_node : bst (Node Leaf x1 r1 h1)).
+     { constructor.
+       - constructor.
+       - assumption.
+       - apply lt_leaf.
+       - match goal with Hgt : gt_tree x1 r1 |- _ => exact Hgt end. }
+     destruct (Oeset.compare Elt x1 x2) eqn:Cx12.
+     * rewrite <- andb_lazy_alt, Bool.andb_true_iff.
+       rewrite IHl1 by assumption.
+       rewrite IHr1 by assumption.
+       split.
+       -- intros [Hl Hr] y Hy.
+          rewrite In_node_iff in Hy.
+          destruct Hy as [Hy | [Hy | Hy]].
+          ++ apply InLeft; apply Hl; assumption.
+          ++ apply IsRoot; apply Oeset.compare_eq_trans with x1; assumption.
+          ++ apply InRight; apply Hr; assumption.
+       -- intros Hnode; split.
+          ++ intros y Hy.
+             assert (Ky : InT y (Node l2 x2 r2 h2)) by
+               (apply Hnode; apply InLeft; assumption).
+             rewrite In_node_iff in Ky.
+             destruct Ky as [Ky | [Ky | Ky]].
+             ** assumption.
+             ** assert (Dy : Oeset.compare Elt y x1 = Eq).
+                { apply Oeset.compare_eq_trans with x2.
+                  - assumption.
+                  - apply Oeset.compare_eq_sym; assumption. }
+                assert (Ly : Oeset.compare Elt y x1 = Lt) by
+                  (match goal with Hlt : lt_tree x1 l1 |- _ => apply Hlt; assumption end).
+                rewrite Dy in Ly; discriminate.
+             ** assert (Dx2x1 : Oeset.compare Elt x2 x1 = Lt).
+                { apply Oeset.compare_lt_trans with y.
+                  - match goal with Hgt : gt_tree x2 r2 |- _ => apply Hgt; assumption end.
+                  - match goal with Hlt : lt_tree x1 l1 |- _ => apply Hlt; assumption end. }
+                assert (Ex2x1 : Oeset.compare Elt x2 x1 = Eq) by
+                  (apply Oeset.compare_eq_sym; assumption).
+                rewrite Ex2x1 in Dx2x1; discriminate.
+          ++ intros y Hy.
+             assert (Ky : InT y (Node l2 x2 r2 h2)) by
+               (apply Hnode; apply InRight; assumption).
+             rewrite In_node_iff in Ky.
+             destruct Ky as [Ky | [Ky | Ky]].
+             ** assert (Dx1x2 : Oeset.compare Elt x1 x2 = Lt).
+                { apply Oeset.compare_lt_trans with y.
+                  - match goal with Hgt : gt_tree x1 r1 |- _ => apply Hgt; assumption end.
+                  - match goal with Hlt : lt_tree x2 l2 |- _ => apply Hlt; assumption end. }
+                rewrite Cx12 in Dx1x2; discriminate.
+             ** assert (Dyx1 : Oeset.compare Elt y x1 = Eq).
+                { apply Oeset.compare_eq_trans with x2.
+                  - assumption.
+                  - apply Oeset.compare_eq_sym; assumption. }
+                assert (Lx1y : Oeset.compare Elt x1 y = Lt) by
+                  (match goal with Hgt : gt_tree x1 r1 |- _ => apply Hgt; assumption end).
+                rewrite Oeset.compare_lt_gt, Dyx1 in Lx1y; discriminate.
+             ** assumption.
+     * rewrite <- andb_lazy_alt, Bool.andb_true_iff.
+       rewrite (@subsetl_spec (subset l1) l1 x1 h1 l2) by
+         (try assumption; intros s Hs; apply IHl1; assumption).
+       rewrite IHr1 by assumption.
+       split.
+       -- intros [Hl Hr] y Hy.
+          rewrite In_node_iff in Hy.
+          destruct Hy as [Hy | [Hy | Hy]].
+          ++ apply InLeft; apply Hl; apply InLeft; assumption.
+          ++ apply InLeft; apply Hl; apply IsRoot; assumption.
+          ++ apply Hr; assumption.
+       -- intros Hnode; split.
+          ++ intros y Hy.
+             assert (Ky : InT y (Node l2 x2 r2 h2)).
+             { apply Hnode.
+               rewrite In_node_iff in Hy.
+               destruct Hy as [Hy | [Hy | Hy]].
+               - apply InLeft; assumption.
+               - apply IsRoot; assumption.
+               - inversion Hy. }
+             assert (Lyx2 : Oeset.compare Elt y x2 = Lt).
+             { rewrite In_node_iff in Hy.
+               destruct Hy as [Hy | [Hy | Hy]].
+               - apply Oeset.compare_lt_trans with x1.
+                 + match goal with Hlt : lt_tree x1 l1 |- _ => apply Hlt; assumption end.
+                 + assumption.
+               - apply Oeset.compare_eq_lt_trans with x1; assumption.
+               - inversion Hy. }
+             rewrite In_node_iff in Ky.
+             destruct Ky as [Ky | [Ky | Ky]].
+             ** assumption.
+             ** rewrite Ky in Lyx2; discriminate.
+             ** assert (Dx2x2 : Oeset.compare Elt x2 x2 = Lt).
+                { apply Oeset.compare_lt_trans with y.
+                  - match goal with Hgt : gt_tree x2 r2 |- _ => apply Hgt; assumption end.
+                  - assumption. }
+                rewrite Oeset.compare_eq_refl in Dx2x2; discriminate.
+	          ++ intros y Hy; apply Hnode; apply InRight; assumption.
+	     * rewrite <- andb_lazy_alt, Bool.andb_true_iff.
+	       assert (SrSpec :
+	         subsetr (subset r1) x1 r2 = true <->
+	         Subset (Node Leaf x1 r1 h1) r2).
+	       { apply subsetr_spec.
+	         - exact Bst_right_node.
+	         - match goal with H : bst r2 |- _ => exact H end.
+	         - intros s Hs; apply IHr1; [assumption | apply bst_Ok; assumption]. }
+	       rewrite SrSpec.
+       rewrite IHl1 by assumption.
+       split.
+       -- intros [Hr Hl] y Hy.
+          rewrite In_node_iff in Hy.
+          destruct Hy as [Hy | [Hy | Hy]].
+          ++ apply Hl; assumption.
+          ++ apply InRight; apply Hr; apply IsRoot; assumption.
+          ++ apply InRight; apply Hr; apply InRight; assumption.
+       -- intros Hnode; split.
+          ++ intros y Hy.
+             assert (Ky : InT y (Node l1 x1 r1 h1)).
+             { rewrite In_node_iff in Hy.
+               destruct Hy as [Hy | [Hy | Hy]].
+               - inversion Hy.
+               - apply IsRoot; assumption.
+               - apply InRight; assumption. }
+	            assert (Ly : InT y (Node l2 x2 r2 h2)) by (apply Hnode; assumption).
+	            assert (Lx2y : Oeset.compare Elt x2 y = Lt).
+	            { rewrite In_node_iff in Hy.
+	              destruct Hy as [Hy | [Hy | Hy]].
+	              - inversion Hy.
+	              - apply Oeset.compare_lt_eq_trans with x1.
+	                + rewrite Oeset.compare_lt_gt, Cx12; reflexivity.
+	                + apply Oeset.compare_eq_sym; assumption.
+	              - apply Oeset.compare_lt_trans with x1.
+	                + rewrite Oeset.compare_lt_gt, Cx12; reflexivity.
+	                + match goal with Hgt : gt_tree x1 r1 |- _ => apply Hgt; assumption end. }
+             rewrite In_node_iff in Ly.
+             destruct Ly as [Ly | [Ly | Ly]].
+             ** assert (Dx2x2 : Oeset.compare Elt x2 x2 = Lt).
+                { apply Oeset.compare_lt_trans with y.
+                  - assumption.
+                  - match goal with Hlt : lt_tree x2 l2 |- _ => apply Hlt; assumption end. }
+                rewrite Oeset.compare_eq_refl in Dx2x2; discriminate.
+             ** assert (Ex2y : Oeset.compare Elt x2 y = Eq) by
+                  (apply Oeset.compare_eq_sym; assumption).
+                rewrite Ex2y in Lx2y; discriminate.
+             ** assumption.
+          ++ intros y Hy; apply Hnode; apply InLeft; assumption.
 Qed.
 
 
@@ -3587,7 +3976,7 @@ revert l2 H'; induction l1 as [ | a1 l1]; intros [ | a2 l2] H; simpl.
 (* 1/4 *)
 exact (fun _ _ _ _ => le_n 0).
 (* 1/3 *)
-intros _ _ _ _; apply le_O_n.
+intros _ _ _ _; lia.
 (* 1/2 *)
 intros _ _ _ _; generalize (H a1); simpl; unfold Oeset.eq_bool; rewrite Oeset.compare_eq_refl; 
 intro Abs; generalize (Abs (refl_equal _)); discriminate.

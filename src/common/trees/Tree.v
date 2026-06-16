@@ -15,7 +15,7 @@ Set Implicit Arguments.
 
 Require Import Relations SetoidList List String Ascii Bool ZArith NArith.
 
-Require Import ListFacts OrderedSet FiniteSet.
+Require Import BasicFacts ListFacts OrderedSet FiniteSet.
 
 Section Sec.
 

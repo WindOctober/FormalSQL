@@ -15,7 +15,7 @@ Set Implicit Arguments.
 
 (** * Substitutions in a term algebra.*)
 
-Require Import List Arith NArith Max Bool.
+Require Import List Arith NArith Bool.
 
 Require Import BasicFacts OrderedSet FiniteSet ListFacts ListSet Term.
 
@@ -868,4 +868,3 @@ Qed.
 End FreshVar.
 *)
 End Sec.
-

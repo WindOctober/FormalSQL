@@ -12,8 +12,22 @@
 (************************************************************************************)
 
 Require Import Arith NArith ZArith String List Floats.
-From Qcert Require Import Float.
 Require Import OrderedSet FiniteSet Bool3.
+
+Definition float_lt := PrimFloat.ltb.
+Definition float_le := PrimFloat.leb.
+Definition float_eq_dec := PrimFloat.eqb.
+Definition float_add := PrimFloat.add.
+Definition float_mult := PrimFloat.mul.
+Definition float_sub := PrimFloat.sub.
+Definition float_div := PrimFloat.div.
+Definition float_zero := PrimFloat.zero.
+Definition float_of_int z := PrimFloat.of_uint63 (Uint63.of_Z z).
+Definition float_max f1 f2 := if float_lt f1 f2 then f2 else f1.
+
+Module JsNumber.
+  Definition neg_infinity := PrimFloat.neg_infinity.
+End JsNumber.
 
 Definition option_compare (A : Type) (c : A -> A -> comparison) x y :=
   match x, y with

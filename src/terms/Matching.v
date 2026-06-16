@@ -14,7 +14,7 @@
 Set Implicit Arguments.
 
 Require Import Bool List Arith.
-Require Import ListFacts FiniteSet OrderedSet Term Substitution.
+Require Import BasicFacts ListFacts FiniteSet OrderedSet Term Substitution.
 
 Section Sec.
 Hypothesis symbol : Type.
@@ -721,4 +721,3 @@ rewrite matching_unfold2.
 Qed.
 
 End Sec.
-

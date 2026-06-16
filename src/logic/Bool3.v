@@ -188,7 +188,7 @@ Lemma forallb_eq :
     forallb (A := A) i1 s1 = forallb (A := A) i2 s2.
 Proof.
 intros A OA i1 i2 s1.
-set (n := length s1); assert (Hn := le_refl n); unfold n at 1 in Hn; clearbody n.
+set (n := length s1); assert (Hn := le_n n); unfold n at 1 in Hn; clearbody n.
 revert s1 Hn; induction n as [ | n].
 - intros s1 Hn; destruct s1; [ | inversion Hn].
   intros s2 H; inversion H.
@@ -277,7 +277,7 @@ Lemma existsb_eq :
     existsb (A := A) i1 s1 = existsb (A := A) i2 s2.
 Proof.
 intros A OA i1 i2 s1.
-set (n := length s1); assert (Hn := le_refl n); unfold n at 1 in Hn; clearbody n.
+set (n := length s1); assert (Hn := le_n n); unfold n at 1 in Hn; clearbody n.
 revert s1 Hn; induction n as [ | n].
 - intros s1 Hn; destruct s1; [ | inversion Hn].
   intros s2 H; inversion H.
@@ -494,5 +494,4 @@ intros A f l; induction l as [ | a1 l]; split; intro H.
     case_eq (f a1); intro Ha1; simpl; trivial.
     apply False_rec; apply (H a1); [left | ]; trivial.
 Qed.
-
 

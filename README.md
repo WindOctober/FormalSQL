@@ -2,12 +2,23 @@
 
 A Coq mechanized executable formal semantics for realistic SQL queries
 
+This repository is forked from
+[formaldata/sqlformalsemantics](https://framagit.org/formaldata/sqlformalsemantics).
+This fork tracks the modernization work needed to compile the development with
+Rocq while preserving the original formal semantics.
+
 
 ## Compilation
-This work compiles with Coq 8.11.2:
+The upstream version compiles with Coq 8.11.2:
 ```
 make
 make install
+```
+
+This fork is currently tested with Rocq 9.2:
+```
+cd src
+opam exec --switch=../.opam-rocq -- make -f Makefile.rocq -j1
 ```
 
 

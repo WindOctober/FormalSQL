@@ -235,7 +235,7 @@ intros x t; pattern t; apply term_rec3; clear t.
 - intros v H; rewrite variables_t_unfold in H.
   rewrite Fset.singleton_spec, Oset.eq_bool_true_iff in H.
   subst v; simpl.
-  rewrite <- plus_n_O; apply le_n.
+  rewrite plus_n_O; apply le_n.
 - intros f l IH H; rewrite variables_t_unfold in H.
   rewrite Fset.mem_Union in H.
   destruct H as [s [Hs H]].
@@ -263,18 +263,18 @@ intros x f H; induction f; rewrite variables_f_unfold in H.
   rewrite Fset.mem_union, Bool.Bool.orb_true_iff in H.
   destruct H as [H | H].
   + refine (Le.le_trans _ _ _ (IHf1 H) _).
-    apply Plus.le_plus_l.
+    apply le_plus_l.
   + refine (Le.le_trans _ _ _ (IHf2 H) _).
-    rewrite <- plus_n_O; apply Plus.le_plus_r.
+    rewrite <- (plus_n_O (tree_size (tree_of_formula f2))) at 1; apply le_plus_r.
 - simpl; apply le_S.
-  rewrite <- plus_n_O; apply (IHf H).
-- simpl; rewrite <- plus_n_O; apply le_S.
+  repeat rewrite plus_n_O; apply (IHf H).
+- simpl; apply le_S.
   rewrite Fset.add_spec, Bool.Bool.orb_true_iff in H.
   destruct H as [H | H].
   + rewrite Oset.eq_bool_true_iff in H; subst v.
-    apply Plus.le_plus_l.
+    apply le_plus_l.
   + refine (Le.le_trans _ _ _ (IHf H) _).
-    apply Plus.le_plus_r.
+    rewrite <- (plus_n_O (tree_size (tree_of_formula f))) at 1; apply le_plus_r.
 Qed.
 
 Lemma free_variables_f_variables_f :

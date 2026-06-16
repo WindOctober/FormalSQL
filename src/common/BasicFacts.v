@@ -25,7 +25,245 @@ Proof.
 intros; apply refl_equal.
 Qed.
 
-Require Import NArith List.
+Require Import NArith List Arith.
+
+Lemma le_O_n : forall n : nat, 0 <= n.
+Proof.
+exact le_0_n.
+Qed.
+
+Lemma le_trans : forall n m p : nat, n <= m -> m <= p -> n <= p.
+Proof.
+exact Nat.le_trans.
+Qed.
+Arguments le_trans _ _ _ _ _ : clear implicits.
+
+Lemma le_refl : forall n : nat, n <= n.
+Proof.
+exact Nat.le_refl.
+Qed.
+Arguments le_refl _ : clear implicits.
+
+Lemma plus_comm : forall n m : nat, n + m = m + n.
+Proof.
+exact Nat.add_comm.
+Qed.
+Arguments plus_comm _ _ : clear implicits.
+
+Lemma plus_assoc : forall n m p : nat, n + (m + p) = n + m + p.
+Proof.
+exact Nat.add_assoc.
+Qed.
+Arguments plus_assoc _ _ _ : clear implicits.
+
+Lemma plus_n_O : forall n : nat, n + 0 = n.
+Proof.
+exact Nat.add_0_r.
+Qed.
+Arguments plus_n_O _ : clear implicits.
+
+Lemma plus_0_r : forall n : nat, n + 0 = n.
+Proof.
+exact Nat.add_0_r.
+Qed.
+Arguments plus_0_r _ : clear implicits.
+
+Lemma plus_le_compat :
+  forall n m p q : nat, n <= m -> p <= q -> n + p <= m + q.
+Proof.
+exact Nat.add_le_mono.
+Qed.
+Arguments plus_le_compat _ _ _ _ _ _ : clear implicits.
+
+Lemma plus_le_compat_l :
+  forall n m p : nat, n <= m -> p + n <= p + m.
+Proof.
+intros n m p; apply Nat.add_le_mono_l.
+Qed.
+Arguments plus_le_compat_l _ _ _ _ : clear implicits.
+
+Lemma plus_le_compat_r :
+  forall n m p : nat, n <= m -> n + p <= m + p.
+Proof.
+intros n m p; apply Nat.add_le_mono_r.
+Qed.
+Arguments plus_le_compat_r _ _ _ _ : clear implicits.
+
+Lemma le_plus_l : forall n m : nat, n <= n + m.
+Proof.
+exact Nat.le_add_r.
+Qed.
+Arguments le_plus_l _ _ : clear implicits.
+
+Lemma le_plus_r : forall n m : nat, n <= m + n.
+Proof.
+exact Nat.le_add_l.
+Qed.
+Arguments le_plus_r _ _ : clear implicits.
+
+Lemma le_plus_trans : forall n m p : nat, n <= m -> n <= m + p.
+Proof.
+intros n m p H; apply Nat.le_trans with m; [assumption | apply Nat.le_add_r].
+Qed.
+Arguments le_plus_trans _ _ _ _ : clear implicits.
+
+Lemma le_max_l : forall n m : nat, n <= max n m.
+Proof.
+exact Nat.le_max_l.
+Qed.
+Arguments le_max_l _ _ : clear implicits.
+
+Lemma le_max_r : forall n m : nat, m <= max n m.
+Proof.
+exact Nat.le_max_r.
+Qed.
+Arguments le_max_r _ _ : clear implicits.
+
+Lemma lt_irrefl : forall n : nat, ~ n < n.
+Proof.
+exact Nat.lt_irrefl.
+Qed.
+Arguments lt_irrefl _ _ : clear implicits.
+
+Lemma lt_n_S : forall n m : nat, n < m -> S n < S m.
+Proof.
+intros n m; apply Nat.succ_lt_mono.
+Qed.
+Arguments lt_n_S _ _ _ : clear implicits.
+
+Lemma lt_trans : forall n m p : nat, n < m -> m < p -> n < p.
+Proof.
+exact Nat.lt_trans.
+Qed.
+Arguments lt_trans _ _ _ _ _ : clear implicits.
+
+Lemma lt_le_trans : forall n m p : nat, n < m -> m <= p -> n < p.
+Proof.
+exact Nat.lt_le_trans.
+Qed.
+Arguments lt_le_trans _ _ _ _ _ : clear implicits.
+
+Lemma le_lt_trans : forall n m p : nat, n <= m -> m < p -> n < p.
+Proof.
+exact Nat.le_lt_trans.
+Qed.
+Arguments le_lt_trans _ _ _ _ _ : clear implicits.
+
+Lemma lt_le_weak : forall n m : nat, n < m -> n <= m.
+Proof.
+exact Nat.lt_le_incl.
+Qed.
+Arguments lt_le_weak _ _ _ : clear implicits.
+
+Lemma plus_lt_compat_l :
+  forall n m p : nat, n < m -> p + n < p + m.
+Proof.
+intros n m p; apply Nat.add_lt_mono_l.
+Qed.
+Arguments plus_lt_compat_l _ _ _ _ : clear implicits.
+
+Lemma plus_lt_compat_r :
+  forall n m p : nat, n < m -> n + p < m + p.
+Proof.
+intros n m p; apply Nat.add_lt_mono_r.
+Qed.
+Arguments plus_lt_compat_r _ _ _ _ : clear implicits.
+
+Lemma plus_le_lt_compat :
+  forall n m p q : nat, n <= m -> p < q -> n + p < m + q.
+Proof.
+exact Nat.add_le_lt_mono.
+Qed.
+Arguments plus_le_lt_compat _ _ _ _ _ _ : clear implicits.
+
+Lemma plus_lt_le_compat :
+  forall n m p q : nat, n < m -> p <= q -> n + p < m + q.
+Proof.
+exact Nat.add_lt_le_mono.
+Qed.
+Arguments plus_lt_le_compat _ _ _ _ _ _ : clear implicits.
+
+Lemma mult_0_r : forall n : nat, n * 0 = 0.
+Proof.
+exact Nat.mul_0_r.
+Qed.
+Arguments mult_0_r _ : clear implicits.
+
+Lemma mult_le_compat_l :
+  forall n m p : nat, n <= m -> p * n <= p * m.
+Proof.
+exact Nat.mul_le_mono_l.
+Qed.
+Arguments mult_le_compat_l _ _ _ _ : clear implicits.
+
+Lemma mult_lt_compat_r :
+  forall n m p : nat, n < m -> 0 < p -> n * p < m * p.
+Proof.
+intros n m p H Hpos.
+apply Nat.mul_lt_mono_pos_r; assumption.
+Qed.
+Arguments mult_lt_compat_r _ _ _ _ _ : clear implicits.
+
+Lemma mult_plus_distr_l :
+  forall n m p : nat, n * (m + p) = n * m + n * p.
+Proof.
+exact Nat.mul_add_distr_l.
+Qed.
+Arguments mult_plus_distr_l _ _ _ : clear implicits.
+
+Module Plus.
+  Definition plus_comm := plus_comm.
+  Arguments plus_comm _ _ : clear implicits.
+  Definition plus_assoc := plus_assoc.
+  Arguments plus_assoc _ _ _ : clear implicits.
+  Definition plus_n_O := plus_n_O.
+  Arguments plus_n_O _ : clear implicits.
+  Definition plus_0_r := plus_0_r.
+  Arguments plus_0_r _ : clear implicits.
+  Definition plus_le_compat := plus_le_compat.
+  Arguments plus_le_compat _ _ _ _ _ _ : clear implicits.
+  Definition plus_le_compat_l := plus_le_compat_l.
+  Arguments plus_le_compat_l _ _ _ _ : clear implicits.
+  Definition plus_le_compat_r := plus_le_compat_r.
+  Arguments plus_le_compat_r _ _ _ _ : clear implicits.
+  Definition le_plus_l := le_plus_l.
+  Arguments le_plus_l _ _ : clear implicits.
+  Definition le_plus_r := le_plus_r.
+  Arguments le_plus_r _ _ : clear implicits.
+  Definition le_plus_trans := le_plus_trans.
+  Arguments le_plus_trans _ _ _ _ : clear implicits.
+  Definition plus_lt_compat_l := plus_lt_compat_l.
+  Arguments plus_lt_compat_l _ _ _ _ : clear implicits.
+  Definition plus_lt_compat_r := plus_lt_compat_r.
+  Arguments plus_lt_compat_r _ _ _ _ : clear implicits.
+  Definition plus_le_lt_compat := plus_le_lt_compat.
+  Arguments plus_le_lt_compat _ _ _ _ _ _ : clear implicits.
+  Definition plus_lt_le_compat := plus_lt_le_compat.
+  Arguments plus_lt_le_compat _ _ _ _ _ _ : clear implicits.
+End Plus.
+
+Module Mult.
+  Definition mult_0_r := mult_0_r.
+  Arguments mult_0_r _ : clear implicits.
+  Definition mult_le_compat_l := mult_le_compat_l.
+  Arguments mult_le_compat_l _ _ _ _ : clear implicits.
+  Definition mult_lt_compat_r := mult_lt_compat_r.
+  Arguments mult_lt_compat_r _ _ _ _ _ : clear implicits.
+  Definition mult_plus_distr_l := mult_plus_distr_l.
+  Arguments mult_plus_distr_l _ _ _ : clear implicits.
+End Mult.
+
+Module Le.
+  Definition le_trans := le_trans.
+  Arguments le_trans _ _ _ _ _ : clear implicits.
+  Definition le_n_S := le_n_S.
+End Le.
+
+Module Lt.
+  Definition lt_le_weak := lt_le_weak.
+  Definition lt_n_S := lt_n_S.
+  Definition lt_trans := lt_trans.
+End Lt.
 
 Lemma app_nil : forall (A : Type) (l : list A), nil ++ l = l.
 Proof.

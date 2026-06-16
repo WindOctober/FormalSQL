@@ -15,7 +15,7 @@ Set Implicit Arguments.
 
 Require Import Relations List Arith.
 
-Require Import ListFacts Mem.
+Require Import BasicFacts ListFacts Mem.
 
 (** * Permutation over lists, and finite multisets. *)
 
@@ -857,6 +857,5 @@ intros A B C f lb1; induction lb1 as [ | b1 lb1]; intros lb2; simpl.
     * apply _permut_app1; [ | apply IHlb2].
     split; [unfold reflexive | unfold transitive | unfold symmetric ]; intros; subst; trivial.
 Qed.
-
 
 

@@ -889,7 +889,7 @@ assert (Hn := le_n n); unfold n at 1 in Hn; clearbody n.
 revert sq Hn; induction n as [ | n]; [intros sq Hn; destruct sq; inversion Hn | ].
 intros sq Hn; destruct sq as [r | o sq1 sq2 | s lsq f1 g f2].
 - apply Fset.equal_refl.  
-- simpl; rewrite sql_sort_unfold; apply IHn; sql_size_tac.
+- simpl; change (sort (sql_query_to_alg sq1) =S= sql_sort basesort sq1); apply IHn; sql_size_tac.
 - assert (IH : 
             forall f, 
               In f lsq -> 
@@ -914,7 +914,7 @@ intros sq Hn; destruct sq as [r | o sq1 sq2 | s lsq f1 g f2].
   rewrite sql_sort_unfold; simpl sort.
   destruct s as [ | [s]]; destruct g as [g | ].
   + unfold id_renaming.
-    rewrite sort_unfold, sql_sort_unfold, map_map, map_id; [ | intros; apply refl_equal].
+    rewrite sort_unfold, map_map, map_id; [ | intros; apply refl_equal].
     apply Fset.mk_set_idem.
   + rewrite 2 sort_unfold.
     rewrite (Fset.equal_eq_1 _ _ _ _ (sort_N_Q_Join _)), map_map.
@@ -937,7 +937,7 @@ Qed.
 Lemma sort_sql_item_to_alg : 
   forall x, sort (sql_item_to_alg x) =S= sql_from_item_sort basesort x.
 Proof.
-intros [sq [ | r]]; simpl; rewrite sql_from_item_sort_unfold.
+intros [sq [ | r]]; simpl.
 - apply sort_sql_to_alg.
 - rewrite 2 map_map, Fset.equal_spec.
   intro a; do 2 apply f_equal; rewrite <- map_eq.
@@ -1017,10 +1017,10 @@ intros WI n; induction n as [ | n]; [repeat split | ].
           destruct r1 as [ | r1].
           - simpl; rewrite (Febag.equal_eq_1 _ _ _ _ IH).
             rewrite Febag.nb_occ_equal; intro a.
-            rewrite eval_sql_from_item_unfold; simpl.
+            simpl.
             unfold Febag.map; rewrite map_id; [ | intros; apply refl_equal].
             rewrite Febag.nb_occ_mk_bag, Febag.nb_occ_elements; apply refl_equal.
-          - rewrite eval_sql_from_item_unfold; simpl sql_item_to_alg; rewrite eval_query_unfold.
+          - simpl sql_item_to_alg; rewrite eval_query_unfold, eval_sql_from_item_unfold.
             rewrite Febag.nb_occ_equal; intro t1.
             unfold Febag.map; rewrite 2 Febag.nb_occ_mk_bag.
             apply (Oeset.nb_occ_map_eq_2_3_alt (OTuple T) (OTuple T)).
@@ -1811,10 +1811,10 @@ revert q Hn; induction n as [ | n]; [intros q Hn; destruct q; inversion Hn | ].
 intros q Hn; destruct q as [ | r | o q1 q2 | q1 q2 | [s] q | f q | [s] g f q].
 - apply Fset.equal_refl.  
 - apply Fset.equal_refl.  
-- simpl; rewrite sql_sort_unfold; apply IHn.
+- simpl; change (sql_sort basesort (alg_query_to_sql q1) =S= sort q1); apply IHn.
   simpl in Hn.
   refine (le_trans _ _ _ _ (le_S_n _ _ Hn)); apply le_plus_l.
-- simpl; rewrite alg_query_to_sql_unfold, sql_sort_unfold.
+- simpl.
   unfold select_as_as_pair.
   rewrite map_map, map_app, 2 map_map.
   rewrite Fset.equal_spec; intro a.
@@ -1981,9 +1981,8 @@ intros W n; induction n as [ | n]; split.
 - intros env f Hn; destruct f; inversion Hn.
 - intros env [ | r | o q1 q2 | q1 q2 | s q | f q | s g h q] Hn.
   + rewrite Febag.nb_occ_equal; intro t; simpl.
-    rewrite eval_sql_query_unfold; simpl.
+    simpl.
     rewrite filter_true; [ | intros; rewrite Bool.true_is_true; apply refl_equal].
-    rewrite eval_sql_from_item_unfold, eval_sql_query_unfold.
     rewrite Febag.nb_occ_singleton, Febag.nb_occ_mk_bag; simpl.
     rewrite (partition_cst (mk_olists (OVal T)) (fun _ : tuple => nil) (c := nil));
     [ | intros; apply refl_equal].
@@ -2887,7 +2886,7 @@ intros W n; induction n as [ | n]; split.
                                             _ (OTuple T) (join_tuple T) (empty_tuple T)
                                             _ 
                                             (join_tuple_empty_2 T)))).
-      rewrite <- Febag.nb_occ_elements, eval_sql_from_item_unfold; simpl.
+      rewrite <- Febag.nb_occ_elements; simpl.
       unfold Febag.map; rewrite map_id; [ | intros; apply refl_equal].
       rewrite Febag.nb_occ_mk_bag, <- Febag.nb_occ_elements.
       apply Febag.nb_occ_equal; assumption.
@@ -2917,7 +2916,7 @@ intros W n; induction n as [ | n]; split.
                                             _ (OTuple T) (join_tuple T) (empty_tuple T)
                                             _ 
                                             (join_tuple_empty_2 T)))).
-            rewrite <- Febag.nb_occ_elements, eval_sql_from_item_unfold; simpl.
+            rewrite <- Febag.nb_occ_elements; simpl.
             unfold Febag.map; rewrite map_id; [ | intros; apply refl_equal].
             rewrite Febag.nb_occ_mk_bag, <- Febag.nb_occ_elements.
             apply Febag.nb_occ_equal; assumption.
@@ -2964,7 +2963,7 @@ intros W n; induction n as [ | n]; split.
                  [ | intros; apply refl_equal].
                assert (Aux := refl_equal ( Bool.true (B T))).
                rewrite <- Bool.true_is_true in Aux; rewrite Aux, N.mul_1_r, N_join_bag_1.
-               rewrite eval_sql_from_item_unfold; unfold Febag.map.
+               unfold Febag.map.
                rewrite Febag.nb_occ_mk_bag, map_id; [ | intros; apply refl_equal].
                rewrite <- !Febag.nb_occ_elements; revert u.
                rewrite <- Febag.nb_occ_equal; apply IH.
