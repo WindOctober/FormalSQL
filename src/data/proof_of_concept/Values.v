@@ -24,6 +24,7 @@ Definition float_div := PrimFloat.div.
 Definition float_zero := PrimFloat.zero.
 Definition float_of_int z := PrimFloat.of_uint63 (Uint63.of_Z z).
 Definition float_max f1 f2 := if float_lt f1 f2 then f2 else f1.
+Definition float_min f1 f2 := if float_lt f1 f2 then f1 else f2.
 
 Module JsNumber.
   Definition neg_infinity := PrimFloat.neg_infinity.
@@ -238,6 +239,126 @@ Defined.
 
 Definition FVal := Fset.build OVal.
 
+Definition is_null_value v :=
+  match v with
+  | Value_string None
+  | Value_Z None
+  | Value_bool None
+  | Value_float None => true
+  | _ => false
+  end.
+
+Definition same_non_null_value v1 v2 :=
+  match v1, v2 with
+  | Value_Z (Some a1), Value_Z (Some a2) =>
+      match Z.compare a1 a2 with Eq => true | _ => false end
+  | Value_float (Some a1), Value_float (Some a2) =>
+      float_eq_dec a1 a2
+  | Value_string (Some s1), Value_string (Some s2) =>
+      match string_compare s1 s2 with Eq => true | _ => false end
+  | Value_bool (Some b1), Value_bool (Some b2) =>
+      Bool.eqb b1 b2
+  | _, _ => false
+  end.
+
+Definition is_z_value v :=
+  match v with
+  | Value_Z _ => true
+  | _ => false
+  end.
+
+Definition is_float_value v :=
+  match v with
+  | Value_float _ => true
+  | _ => false
+  end.
+
+Fixpoint z_values l :=
+  match l with
+  | Value_Z (Some z) :: tl => z :: z_values tl
+  | _ :: tl => z_values tl
+  | nil => nil
+  end.
+
+Fixpoint float_values l :=
+  match l with
+  | Value_float (Some f) :: tl => f :: float_values tl
+  | _ :: tl => float_values tl
+  | nil => nil
+  end.
+
+Definition non_null_count l :=
+  Z_of_nat (List.length (filter (fun v => negb (is_null_value v)) l)).
+
+Definition interp_sum_z l :=
+  if forallb is_z_value l then
+    match z_values l with
+    | nil => Value_Z None
+    | values => Value_Z (Some (fold_left Z.add values 0%Z))
+    end
+  else Value_Z None.
+
+Definition interp_sum_float l :=
+  if forallb is_float_value l then
+    match float_values l with
+    | nil => Value_float None
+    | values => Value_float (Some (fold_left float_add values float_zero))
+    end
+  else Value_float None.
+
+Definition interp_max_z l :=
+  if forallb is_z_value l then
+    match z_values l with
+    | nil => Value_Z None
+    | z :: values => Value_Z (Some (fold_left Z.max values z))
+    end
+  else Value_Z None.
+
+Definition interp_max_float l :=
+  if forallb is_float_value l then
+    match float_values l with
+    | nil => Value_float None
+    | f :: values => Value_float (Some (fold_left float_max values f))
+    end
+  else Value_float None.
+
+Definition interp_min_z l :=
+  if forallb is_z_value l then
+    match z_values l with
+    | nil => Value_Z None
+    | z :: values => Value_Z (Some (fold_left Z.min values z))
+    end
+  else Value_Z None.
+
+Definition interp_min_float l :=
+  if forallb is_float_value l then
+    match float_values l with
+    | nil => Value_float None
+    | f :: values => Value_float (Some (fold_left float_min values f))
+    end
+  else Value_float None.
+
+Definition interp_avg_z l :=
+  if forallb is_z_value l then
+    match z_values l with
+    | nil => Value_Z None
+    | values =>
+        let sum := fold_left Z.add values 0%Z in
+        Value_Z (Some (Z.quot sum (Z_of_nat (List.length values))))
+    end
+  else Value_Z None.
+
+Definition interp_avg_float l :=
+  if forallb is_float_value l then
+    match float_values l with
+    | nil => Value_float None
+    | values =>
+        let sum := fold_left float_add values float_zero in
+        let count := Z.of_nat (List.length values) in
+        Value_float (Some (float_div sum (float_of_int count)))
+    end
+  else Value_float None.
+
 Definition interp_predicate p :=
   match p with
     | Predicate "<" =>
@@ -318,6 +439,61 @@ Definition interp_predicate p :=
             match string_compare s1 s2 with Eq => false3 | _ => true3 end
           | _ => unknown3
         end
+    | Predicate "is_null" =>
+      fun l =>
+        match l with
+          | v :: nil => if is_null_value v then true3 else false3
+          | _ => unknown3
+        end
+    | Predicate "is_not_null" =>
+      fun l =>
+        match l with
+          | v :: nil => if is_null_value v then false3 else true3
+          | _ => unknown3
+        end
+    | Predicate "is_true" =>
+      fun l =>
+        match l with
+          | Value_bool (Some true) :: nil => true3
+          | Value_bool (Some false) :: nil => false3
+          | Value_bool None :: nil => unknown3
+          | _ => unknown3
+        end
+    | Predicate "is_not_true" =>
+      fun l =>
+        match l with
+          | Value_bool (Some true) :: nil => false3
+          | Value_bool (Some false) :: nil
+          | Value_bool None :: nil => true3
+          | _ => unknown3
+        end
+    | Predicate "is_false" =>
+      fun l =>
+        match l with
+          | Value_bool (Some false) :: nil => true3
+          | Value_bool (Some true) :: nil => false3
+          | Value_bool None :: nil => unknown3
+          | _ => unknown3
+        end
+    | Predicate "is_not_false" =>
+      fun l =>
+        match l with
+          | Value_bool (Some false) :: nil => false3
+          | Value_bool (Some true) :: nil
+          | Value_bool None :: nil => true3
+          | _ => unknown3
+        end
+    | Predicate "is_not_distinct_from" =>
+      fun l =>
+        match l with
+          | v1 :: v2 :: nil =>
+              if andb (is_null_value v1) (is_null_value v2)
+              then true3
+              else if orb (is_null_value v1) (is_null_value v2)
+                   then false3
+                   else if same_non_null_value v1 v2 then true3 else false3
+          | _ => unknown3
+        end
    | _ => fun _ => unknown3
   end.
 
@@ -378,73 +554,15 @@ Definition interp_symbol f :=
 
 Definition interp_aggregate a l :=
   match a with
-    | Aggregate "count" => Value_Z (Some (Z_of_nat (List.length l)))
-    | Aggregate "sum" =>
-      Value_Z (Some (fold_left (fun acc x => match x with Value_Z (Some x) => (acc + x)%Z | _ => acc end) l 0%Z))
-    | Aggregate "sum." =>
-      Value_float (Some (fold_left (fun acc x => match x with Value_float (Some x) => (float_add acc x) | _ => acc end) l float_zero))
-    | Aggregate "max" =>
-      Value_Z (Some (
-      if forallb
-           (fun x =>
-              match x with
-              | Value_Z _ => true
-              | _ => false
-              end) l then
-        let l' := filter
-                   (fun x =>
-                      match x with
-                      | Value_Z (Some _) => true
-                      | _ => false
-                      end) l in
-        match l' with
-        | (Value_Z (Some z0)) :: l1 =>
-          (fold_left (fun acc x => match x with 
-                                          | Value_Z (Some x) => (Z.max acc x)%Z 
-                                          | _ => acc end) l1 z0%Z)
-        | _ =>  0%Z
-        end
-      else
-         0%Z))
-    | Aggregate "max." =>
-      Value_float (Some (
-      if forallb
-           (fun x =>
-              match x with
-              | Value_float _ => true
-              | _ => false
-              end) l then
-        let l' := filter
-                   (fun x =>
-                      match x with
-                      | Value_float (Some _) => true
-                      | _ => false
-                      end) l in
-          fold_right (fun x y =>
-                        match x with
-                        | Value_float (Some x) => float_max x y
-                        | _ => y
-                        end) JsNumber.neg_infinity l'
-      else
-         JsNumber.neg_infinity))
-    | Aggregate "avg" =>
-      Value_Z
-        (Some (let sum :=
-                   fold_left (fun acc x => match x with
-                                           | Value_Z (Some x) => (acc + x)%Z
-                                           | _ => acc end) l 0%Z in
-               Z.quot sum (Z_of_nat (List.length l))))
-    | Aggregate "avg." =>
-      Value_float (Some
-                     (let sum :=
-                   fold_right (fun x acc => match x with
-                                           | Value_float (Some x) => (float_add x acc)
-                                           | _ => acc end) float_zero l in
-                      let ll := Z.of_nat (List.length l) in
-                      match ll with
-                      | 0%Z => float_zero
-                      | _ => float_div sum (float_of_int ll)
-                   end))
+    | Aggregate "count" => Value_Z (Some (non_null_count l))
+    | Aggregate "sum" => interp_sum_z l
+    | Aggregate "sum." => interp_sum_float l
+    | Aggregate "max" => interp_max_z l
+    | Aggregate "max." => interp_max_float l
+    | Aggregate "min" => interp_min_z l
+    | Aggregate "min." => interp_min_float l
+    | Aggregate "avg" => interp_avg_z l
+    | Aggregate "avg." => interp_avg_float l
     | Aggregate _ => Value_Z None
   end.
 
