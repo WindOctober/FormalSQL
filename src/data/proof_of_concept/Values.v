@@ -48,7 +48,8 @@ Inductive type :=
  | type_string 
  | type_Z
  | type_bool
- | type_float.
+ | type_float
+ | type_date.
 
 Open Scope N_scope.
 
@@ -59,6 +60,7 @@ Definition N_of_type :=
     | type_Z => 1
     | type_bool => 2
     | type_float => 3
+    | type_date => 4
     end.
 
 Definition OT : Oset.Rcd type.
@@ -144,13 +146,17 @@ Inductive value : Set :=
   | Value_string : option string -> value
   | Value_Z : option Z -> value
   | Value_bool : option bool -> value
-  | Value_float : option float -> value.
+  | Value_float : option float -> value
+  | Value_date : option Z -> value.
 
 Register value as datacert.value.type.
 Register Value_string as datacert.value.Value_string.
 Register Value_Z as datacert.value.Value_Z.
 Register Value_bool as datacert.value.Value_bool.
 Register Value_float as datacert.value.Value_float.
+Register Value_date as datacert.value.Value_date.
+
+Open Scope Z_scope.
 
 Definition type_of_value v := 
 match v with
@@ -158,6 +164,7 @@ match v with
   | Value_Z _ => type_Z
   | Value_bool _ => type_bool
   | Value_float _ => type_float
+  | Value_date _ => type_date
   end.
 
 (** Default values for each type. *)
@@ -167,7 +174,73 @@ Definition default_value d :=
     | type_Z => Value_Z None
     | type_bool => Value_bool None
     | type_float => Value_float None
+    | type_date => Value_date None
   end.
+
+Definition z_le_bool x y :=
+  match Z.compare x y with Gt => false | _ => true end.
+
+Definition is_leap_year y :=
+  andb (Z.eqb (Z.modulo y 4) 0)
+       (orb (negb (Z.eqb (Z.modulo y 100) 0))
+            (Z.eqb (Z.modulo y 400) 0)).
+
+Definition days_in_month y m :=
+  match m with
+  | 1 => 31
+  | 2 => if is_leap_year y then 29 else 28
+  | 3 => 31
+  | 4 => 30
+  | 5 => 31
+  | 6 => 30
+  | 7 => 31
+  | 8 => 31
+  | 9 => 30
+  | 10 => 31
+  | 11 => 30
+  | 12 => 31
+  | _ => 0
+  end%Z.
+
+Definition valid_ymd y m d :=
+  andb (andb (z_le_bool 1 m) (z_le_bool m 12))
+       (andb (z_le_bool 1 d) (z_le_bool d (days_in_month y m))).
+
+Definition days_from_civil y m d :=
+  let y := if z_le_bool m 2 then y - 1 else y in
+  let era := Z.div y 400 in
+  let yoe := y - era * 400 in
+  let mp := if z_le_bool 3 m then m - 3 else m + 9 in
+  let doy := Z.div (153 * mp + 2) 5 + d - 1 in
+  let doe := yoe * 365 + Z.div yoe 4 - Z.div yoe 100 + doy in
+  era * 146097 + doe - 719468.
+
+Definition date_from_ymd y m d :=
+  if valid_ymd y m d then Some (days_from_civil y m d) else None.
+
+Definition civil_from_days z :=
+  let z := z + 719468 in
+  let era := Z.div z 146097 in
+  let doe := z - era * 146097 in
+  let yoe := Z.div (doe - Z.div doe 1460 + Z.div doe 36524 - Z.div doe 146096) 365 in
+  let y := yoe + era * 400 in
+  let doy := doe - (365 * yoe + Z.div yoe 4 - Z.div yoe 100) in
+  let mp := Z.div (5 * doy + 2) 153 in
+  let d := doy - Z.div (153 * mp + 2) 5 + 1 in
+  let m := mp + if z_le_bool mp 9 then 3 else -9 in
+  let y := y + if z_le_bool m 2 then 1 else 0 in
+  (y, m, d).
+
+Definition date_add_days date days := date + days.
+
+Definition date_add_months date months :=
+  let '(y, m, d) := civil_from_days date in
+  let month_index := y * 12 + (m - 1) + months in
+  let y' := Z.div month_index 12 in
+  let m' := Z.modulo month_index 12 + 1 in
+  days_from_civil y' m' (Z.min d (days_in_month y' m')).
+
+Definition date_add_years date years := date_add_months date (years * 12).
 
 (** injection of domain names into natural numbers in order to
     build an ordering on them.
@@ -184,28 +257,39 @@ Definition value_compare x y :=
     | Value_string s1, Value_string s2 => option_compare _ string_compare s1 s2
     | Value_string _, Value_Z _
     | Value_string _, Value_bool _
-    | Value_string _, Value_float _ => Lt
+    | Value_string _, Value_float _
+    | Value_string _, Value_date _ => Lt
 
     | Value_Z _, Value_string _ => Gt
     | Value_Z z1, Value_Z z2 => option_compare _ Z.compare z1 z2
     | Value_Z _, Value_bool _
-    | Value_Z _, Value_float _ => Lt
+    | Value_Z _, Value_float _
+    | Value_Z _, Value_date _ => Lt
 
     | Value_bool _, Value_string _
     | Value_bool _, Value_Z _ => Gt
     | Value_bool b1, Value_bool b2 => option_compare _ bool_compare b1 b2
-    | Value_bool _, Value_float _ => Lt
+    | Value_bool _, Value_float _
+    | Value_bool _, Value_date _ => Lt
 
     | Value_float _, Value_string _
     | Value_float _, Value_Z _
     | Value_float _, Value_bool _ => Gt
     | Value_float f1, Value_float f2 => option_compare _ (Oset.compare Ofloat) f1 f2
+    | Value_float _, Value_date _ => Lt
+
+    | Value_date _, Value_string _
+    | Value_date _, Value_Z _
+    | Value_date _, Value_bool _
+    | Value_date _, Value_float _ => Gt
+    | Value_date d1, Value_date d2 => option_compare _ Z.compare d1 d2
   end.
 
 Definition OVal : Oset.Rcd value.
 split with value_compare.
 - (* 1/3 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ]] [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ]];
+  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [d1 | ]]
+         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [d2 | ]];
     try discriminate; simpl; trivial.
   + generalize (Oset.eq_bool_ok Ostring s1 s2); simpl; case (string_compare s1 s2).
     * apply (f_equal (fun x => Value_string (Some x))).
@@ -223,18 +307,27 @@ split with value_compare.
     * intros ->; auto.
     * intros H1 H2; injection H2; apply H1.
     * intros H1 H2; injection H2; apply H1.
+  + generalize (Oset.eq_bool_ok OZ d1 d2); simpl; case (Z.compare d1 d2).
+    * apply (f_equal (fun x => Value_date (Some x))).
+    * intros H1 H2; injection H2; apply H1.
+    * intros H1 H2; injection H2; apply H1.
 - (* 1/2 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ]] [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ]] [[s3 | ] | [z3 | ] | [b3 | ] | [f3 | ]]; trivial; try discriminate; simpl.
+  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [d1 | ]]
+         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [d2 | ]]
+         [[s3 | ] | [z3 | ] | [b3 | ] | [f3 | ] | [d3 | ]]; trivial; try discriminate; simpl.
   + apply (Oset.compare_lt_trans Ostring).
   + apply (Oset.compare_lt_trans OZ).
   + apply (Oset.compare_lt_trans Obool).
   + apply (Oset.compare_lt_trans Ofloat).
+  + apply (Oset.compare_lt_trans OZ).
 - (* 1/1 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ]] [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ]]; trivial; simpl.
+  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [d1 | ]]
+         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [d2 | ]]; trivial; simpl.
   + apply (Oset.compare_lt_gt Ostring).
   + apply (Oset.compare_lt_gt OZ).
   + apply (Oset.compare_lt_gt Obool).
   + apply (Oset.compare_lt_gt Ofloat).
+  + apply (Oset.compare_lt_gt OZ).
 Defined.
 
 Definition FVal := Fset.build OVal.
@@ -244,7 +337,8 @@ Definition is_null_value v :=
   | Value_string None
   | Value_Z None
   | Value_bool None
-  | Value_float None => true
+  | Value_float None
+  | Value_date None => true
   | _ => false
   end.
 
@@ -258,6 +352,8 @@ Definition same_non_null_value v1 v2 :=
       match string_compare s1 s2 with Eq => true | _ => false end
   | Value_bool (Some b1), Value_bool (Some b2) =>
       Bool.eqb b1 b2
+  | Value_date (Some d1), Value_date (Some d2) =>
+      match Z.compare d1 d2 with Eq => true | _ => false end
   | _, _ => false
   end.
 
@@ -366,6 +462,8 @@ Definition interp_predicate p :=
         match l with
           | Value_Z (Some a1) :: Value_Z (Some a2) :: nil =>
             match Z.compare a1 a2 with Lt => true3 | _ => false3 end
+          | Value_date (Some a1) :: Value_date (Some a2) :: nil =>
+            match Z.compare a1 a2 with Lt => true3 | _ => false3 end
           | _ => unknown3
         end
     | Predicate "<." =>
@@ -379,6 +477,8 @@ Definition interp_predicate p :=
       fun l =>
         match l with
           | Value_Z (Some a1) :: Value_Z (Some a2) :: nil =>
+            match Z.compare a1 a2 with Gt => false3 | _ => true3 end
+          | Value_date (Some a1) :: Value_date (Some a2) :: nil =>
             match Z.compare a1 a2 with Gt => false3 | _ => true3 end
           | _ => unknown3
         end
@@ -394,6 +494,8 @@ Definition interp_predicate p :=
         match l with
           | Value_Z (Some a1) :: Value_Z (Some a2) :: nil =>
             match Z.compare a1 a2 with Gt => true3 | _ => false3 end
+          | Value_date (Some a1) :: Value_date (Some a2) :: nil =>
+            match Z.compare a1 a2 with Gt => true3 | _ => false3 end
           | _ => unknown3
         end
     | Predicate ">." =>
@@ -407,6 +509,8 @@ Definition interp_predicate p :=
       fun l =>
         match l with
           | Value_Z (Some a1) :: Value_Z (Some a2) :: nil =>
+            match Z.compare a1 a2 with Lt => false3 | _ => true3 end
+          | Value_date (Some a1) :: Value_date (Some a2) :: nil =>
             match Z.compare a1 a2 with Lt => false3 | _ => true3 end
           | _ => unknown3
         end
@@ -426,6 +530,8 @@ Definition interp_predicate p :=
             if float_eq_dec a1 a2 then true3 else false3
           | Value_string (Some s1) :: Value_string (Some s2) :: nil =>
             match string_compare s1 s2 with Eq => true3 | _ => false3 end
+          | Value_date (Some d1) :: Value_date (Some d2) :: nil =>
+            match Z.compare d1 d2 with Eq => true3 | _ => false3 end
           | _ => unknown3
         end
     | Predicate "<>" =>
@@ -437,6 +543,8 @@ Definition interp_predicate p :=
             if float_eq_dec a1 a2 then false3 else true3
           | Value_string (Some s1) :: Value_string (Some s2) :: nil =>
             match string_compare s1 s2 with Eq => false3 | _ => true3 end
+          | Value_date (Some d1) :: Value_date (Some d2) :: nil =>
+            match Z.compare d1 d2 with Eq => false3 | _ => true3 end
           | _ => unknown3
         end
     | Predicate "is_null" =>
@@ -532,6 +640,24 @@ Definition interp_symbol f :=
           | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
             Value_float (Some (float_sub a1 a2))
           | _ => Value_float None end
+    | Symbol _ "date_add_days" =>
+      fun l =>
+        match l with
+          | Value_date (Some d) :: Value_Z (Some days) :: nil =>
+            Value_date (Some (date_add_days d days))
+          | _ => Value_date None end
+    | Symbol _ "date_add_months" =>
+      fun l =>
+        match l with
+          | Value_date (Some d) :: Value_Z (Some months) :: nil =>
+            Value_date (Some (date_add_months d months))
+          | _ => Value_date None end
+    | Symbol _ "date_add_years" =>
+      fun l =>
+        match l with
+          | Value_date (Some d) :: Value_Z (Some years) :: nil =>
+            Value_date (Some (date_add_years d years))
+          | _ => Value_date None end
     | Symbol _ "opp" =>
       fun l =>
         match l with

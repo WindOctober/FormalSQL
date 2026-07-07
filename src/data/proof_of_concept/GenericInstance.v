@@ -54,13 +54,15 @@ Inductive attribute : Set :=
   | Attr_string : string -> attribute
   | Attr_Z : string -> attribute
   | Attr_bool : string -> attribute
-  | Attr_float : string -> attribute.
+  | Attr_float : string -> attribute
+  | Attr_date : string -> attribute.
 
 Register attribute as datacert.attribute.type.
 Register Attr_string as datacert.attribute.Attr_string.
 Register Attr_Z as datacert.attribute.Attr_Z.
 Register Attr_bool as datacert.attribute.Attr_bool.
 Register Attr_float as datacert.attribute.Attr_float.
+Register Attr_date as datacert.attribute.Attr_date.
 
 Definition type_of_attribute (a : attribute) :=
   match a with
@@ -68,6 +70,7 @@ Definition type_of_attribute (a : attribute) :=
     | Attr_Z _ => type_Z
     | Attr_bool _  => type_bool
     | Attr_float _ => type_float
+    | Attr_date _ => type_date
   end.
 
 Open Scope N_scope.
@@ -78,14 +81,16 @@ Definition N_of_attribute a :=
     | Attr_Z _ => 1
     | Attr_bool _ => 2
     | Attr_float _ => 3
+    | Attr_date _ => 4
   end.
 
 Definition N2_of_attribute a :=
   match a with
     | Attr_string s
     | Attr_Z s
-    | Attr_bool s => (N_of_attribute a, s)
-    | Attr_float s => (N_of_attribute a, s)
+    | Attr_bool s
+    | Attr_float s
+    | Attr_date s => (N_of_attribute a, s)
   end.
 
 Definition attribute_compare a1 a2 :=
@@ -238,4 +243,3 @@ Register TNull as datacert.syntax.TNull.
 (*            OAN FAN SimpleValues.OVal SimpleValues.FVal *)
 (*            predicate symbol aggregate OP OSymb OAgg Bool3.Bool2 *)
 (*            interp_pred interp_symb interp_agg. *)
-

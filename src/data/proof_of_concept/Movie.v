@@ -52,6 +52,7 @@ Definition mk_role mid pid n :=
               | Attr_Z _ => Value_Z None
               | Attr_bool _ => Value_bool None
               | Attr_float _ => Value_float None
+              | Attr_date _ => Value_date None
               end).
 
 Definition roles :=
@@ -77,6 +78,7 @@ Definition mk_director mid pid :=
               | Attr_Z _ => Value_Z None
               | Attr_bool _ => Value_bool None
               | Attr_float _ => Value_float None
+              | Attr_date _ => Value_date None
               end).
 
 Definition directors :=
@@ -101,6 +103,7 @@ Definition mk_movie mid t y rt rk :=
               | Attr_Z _ => Value_Z None
               | Attr_bool _ => Value_bool None
               | Attr_float _ => Value_float None
+              | Attr_date _ => Value_date None
               end).
 
 Definition movies :=
@@ -124,6 +127,7 @@ Definition mk_people pid f l :=
               | Attr_Z _ => Value_Z None
               | Attr_bool _ => Value_bool None
               | Attr_float _ => Value_float None
+              | Attr_date _ => Value_date None
               end).
 
 Definition people :=
@@ -174,7 +178,6 @@ Abort.
 *)
 
 (* Eval compute in (eval_sql_query_in_state db_movie query0). *)
-
 
 
 

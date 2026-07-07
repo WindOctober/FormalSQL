@@ -26,6 +26,7 @@ Definition Value_bool := NullValues.Value_bool.
 Definition Value_Z := NullValues.Value_Z.
 Definition Value_string := NullValues.Value_string.
 Definition Value_float := NullValues.Value_float.
+Definition Value_date := NullValues.Value_date.
 
 Definition predicate := Values.predicate.
 Definition Predicate := Values.Predicate.
@@ -61,6 +62,7 @@ Fixpoint mk_att att atts vals :=
                 | Attr_Z _ => Value_Z None
                 | Attr_bool _ => Value_bool None
                 | Attr_float _ => Value_float None
+                | Attr_date _ => Value_date None
                 end
   end.
 
@@ -213,11 +215,13 @@ Definition contains_nulls (t : tuple TNull) :=
                    | NullValues.Value_string None
                    | NullValues.Value_Z None
                    | NullValues.Value_bool None
-                   | NullValues.Value_float None => true
+                   | NullValues.Value_float None
+                   | NullValues.Value_date None => true
                    | NullValues.Value_string (Some _)
                    | NullValues.Value_Z (Some _)
                    | NullValues.Value_bool (Some _)
-                   | NullValues.Value_float (Some _) => false
+                   | NullValues.Value_float (Some _)
+                   | NullValues.Value_date (Some _) => false
                    end) ({{{labels TNull t}}}).
 
 Lemma contains_nulls_eq :
