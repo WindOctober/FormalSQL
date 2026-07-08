@@ -28,6 +28,7 @@ Definition Value_string := NullValues.Value_string.
 Definition Value_float := NullValues.Value_float.
 Definition Value_date := NullValues.Value_date.
 Definition Value_timestamp := NullValues.Value_timestamp.
+Definition Value_timestamptz := NullValues.Value_timestamptz.
 
 Definition predicate := Values.predicate.
 Definition Predicate := Values.Predicate.
@@ -65,6 +66,7 @@ Fixpoint mk_att att atts vals :=
                 | Attr_float _ => Value_float None
                 | Attr_date _ => Value_date None
                 | Attr_timestamp _ _ => Value_timestamp None
+                | Attr_timestamptz _ _ => Value_timestamptz None
                 end
   end.
 
@@ -219,13 +221,15 @@ Definition contains_nulls (t : tuple TNull) :=
                    | NullValues.Value_bool None
                    | NullValues.Value_float None
                    | NullValues.Value_date None
-                   | NullValues.Value_timestamp None => true
+                   | NullValues.Value_timestamp None
+                   | NullValues.Value_timestamptz None => true
                    | NullValues.Value_string (Some _)
                    | NullValues.Value_Z (Some _)
                    | NullValues.Value_bool (Some _)
                    | NullValues.Value_float (Some _)
                    | NullValues.Value_date (Some _)
-                   | NullValues.Value_timestamp (Some _) => false
+                   | NullValues.Value_timestamp (Some _)
+                   | NullValues.Value_timestamptz (Some _) => false
                    end) ({{{labels TNull t}}}).
 
 Lemma contains_nulls_eq :

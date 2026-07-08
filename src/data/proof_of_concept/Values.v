@@ -50,7 +50,8 @@ Inductive type :=
  | type_bool
  | type_float
  | type_date
- | type_timestamp.
+ | type_timestamp
+ | type_timestamptz.
 
 Open Scope N_scope.
 
@@ -63,6 +64,7 @@ Definition N_of_type :=
     | type_float => 3
     | type_date => 4
     | type_timestamp => 5
+    | type_timestamptz => 6
     end.
 
 Definition OT : Oset.Rcd type.
@@ -150,7 +152,8 @@ Inductive value : Set :=
   | Value_bool : option bool -> value
   | Value_float : option float -> value
   | Value_date : option Z -> value
-  | Value_timestamp : option Z -> value.
+  | Value_timestamp : option Z -> value
+  | Value_timestamptz : option Z -> value.
 
 Register value as datacert.value.type.
 Register Value_string as datacert.value.Value_string.
@@ -159,6 +162,7 @@ Register Value_bool as datacert.value.Value_bool.
 Register Value_float as datacert.value.Value_float.
 Register Value_date as datacert.value.Value_date.
 Register Value_timestamp as datacert.value.Value_timestamp.
+Register Value_timestamptz as datacert.value.Value_timestamptz.
 
 Open Scope Z_scope.
 
@@ -170,6 +174,7 @@ match v with
   | Value_float _ => type_float
   | Value_date _ => type_date
   | Value_timestamp _ => type_timestamp
+  | Value_timestamptz _ => type_timestamptz
   end.
 
 (** Default values for each type. *)
@@ -181,6 +186,7 @@ Definition default_value d :=
     | type_float => Value_float None
     | type_date => Value_date None
     | type_timestamp => Value_timestamp None
+    | type_timestamptz => Value_timestamptz None
   end.
 
 Definition z_le_bool x y :=
@@ -303,35 +309,40 @@ Definition value_compare x y :=
     | Value_string _, Value_bool _
     | Value_string _, Value_float _
     | Value_string _, Value_date _
-    | Value_string _, Value_timestamp _ => Lt
+    | Value_string _, Value_timestamp _
+    | Value_string _, Value_timestamptz _ => Lt
 
     | Value_Z _, Value_string _ => Gt
     | Value_Z z1, Value_Z z2 => option_compare _ Z.compare z1 z2
     | Value_Z _, Value_bool _
     | Value_Z _, Value_float _
     | Value_Z _, Value_date _
-    | Value_Z _, Value_timestamp _ => Lt
+    | Value_Z _, Value_timestamp _
+    | Value_Z _, Value_timestamptz _ => Lt
 
     | Value_bool _, Value_string _
     | Value_bool _, Value_Z _ => Gt
     | Value_bool b1, Value_bool b2 => option_compare _ bool_compare b1 b2
     | Value_bool _, Value_float _
     | Value_bool _, Value_date _
-    | Value_bool _, Value_timestamp _ => Lt
+    | Value_bool _, Value_timestamp _
+    | Value_bool _, Value_timestamptz _ => Lt
 
     | Value_float _, Value_string _
     | Value_float _, Value_Z _
     | Value_float _, Value_bool _ => Gt
     | Value_float f1, Value_float f2 => option_compare _ (Oset.compare Ofloat) f1 f2
     | Value_float _, Value_date _
-    | Value_float _, Value_timestamp _ => Lt
+    | Value_float _, Value_timestamp _
+    | Value_float _, Value_timestamptz _ => Lt
 
     | Value_date _, Value_string _
     | Value_date _, Value_Z _
     | Value_date _, Value_bool _
     | Value_date _, Value_float _ => Gt
     | Value_date d1, Value_date d2 => option_compare _ Z.compare d1 d2
-    | Value_date _, Value_timestamp _ => Lt
+    | Value_date _, Value_timestamp _
+    | Value_date _, Value_timestamptz _ => Lt
 
     | Value_timestamp _, Value_string _
     | Value_timestamp _, Value_Z _
@@ -339,13 +350,22 @@ Definition value_compare x y :=
     | Value_timestamp _, Value_float _
     | Value_timestamp _, Value_date _ => Gt
     | Value_timestamp t1, Value_timestamp t2 => option_compare _ Z.compare t1 t2
+    | Value_timestamp _, Value_timestamptz _ => Lt
+
+    | Value_timestamptz _, Value_string _
+    | Value_timestamptz _, Value_Z _
+    | Value_timestamptz _, Value_bool _
+    | Value_timestamptz _, Value_float _
+    | Value_timestamptz _, Value_date _
+    | Value_timestamptz _, Value_timestamp _ => Gt
+    | Value_timestamptz t1, Value_timestamptz t2 => option_compare _ Z.compare t1 t2
   end.
 
 Definition OVal : Oset.Rcd value.
 split with value_compare.
 - (* 1/3 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [d1 | ] | [t1 | ]]
-         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [d2 | ] | [t2 | ]];
+  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [d1 | ] | [t1 | ] | [tz1 | ]]
+         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [d2 | ] | [t2 | ] | [tz2 | ]];
     try discriminate; simpl; trivial.
   + generalize (Oset.eq_bool_ok Ostring s1 s2); simpl; case (string_compare s1 s2).
     * apply (f_equal (fun x => Value_string (Some x))).
@@ -371,23 +391,29 @@ split with value_compare.
     * apply (f_equal (fun x => Value_timestamp (Some x))).
     * intros H1 H2; injection H2; apply H1.
     * intros H1 H2; injection H2; apply H1.
+  + generalize (Oset.eq_bool_ok OZ tz1 tz2); simpl; case (Z.compare tz1 tz2).
+    * apply (f_equal (fun x => Value_timestamptz (Some x))).
+    * intros H1 H2; injection H2; apply H1.
+    * intros H1 H2; injection H2; apply H1.
 - (* 1/2 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [d1 | ] | [t1 | ]]
-         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [d2 | ] | [t2 | ]]
-         [[s3 | ] | [z3 | ] | [b3 | ] | [f3 | ] | [d3 | ] | [t3 | ]]; trivial; try discriminate; simpl.
+  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [d1 | ] | [t1 | ] | [tz1 | ]]
+         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [d2 | ] | [t2 | ] | [tz2 | ]]
+         [[s3 | ] | [z3 | ] | [b3 | ] | [f3 | ] | [d3 | ] | [t3 | ] | [tz3 | ]]; trivial; try discriminate; simpl.
   + apply (Oset.compare_lt_trans Ostring).
   + apply (Oset.compare_lt_trans OZ).
   + apply (Oset.compare_lt_trans Obool).
   + apply (Oset.compare_lt_trans Ofloat).
   + apply (Oset.compare_lt_trans OZ).
   + apply (Oset.compare_lt_trans OZ).
+  + apply (Oset.compare_lt_trans OZ).
 - (* 1/1 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [d1 | ] | [t1 | ]]
-         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [d2 | ] | [t2 | ]]; trivial; simpl.
+  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [d1 | ] | [t1 | ] | [tz1 | ]]
+         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [d2 | ] | [t2 | ] | [tz2 | ]]; trivial; simpl.
   + apply (Oset.compare_lt_gt Ostring).
   + apply (Oset.compare_lt_gt OZ).
   + apply (Oset.compare_lt_gt Obool).
   + apply (Oset.compare_lt_gt Ofloat).
+  + apply (Oset.compare_lt_gt OZ).
   + apply (Oset.compare_lt_gt OZ).
   + apply (Oset.compare_lt_gt OZ).
 Defined.
@@ -401,7 +427,8 @@ Definition is_null_value v :=
   | Value_bool None
   | Value_float None
   | Value_date None
-  | Value_timestamp None => true
+  | Value_timestamp None
+  | Value_timestamptz None => true
   | _ => false
   end.
 
@@ -418,6 +445,8 @@ Definition same_non_null_value v1 v2 :=
   | Value_date (Some d1), Value_date (Some d2) =>
       match Z.compare d1 d2 with Eq => true | _ => false end
   | Value_timestamp (Some t1), Value_timestamp (Some t2) =>
+      match Z.compare t1 t2 with Eq => true | _ => false end
+  | Value_timestamptz (Some t1), Value_timestamptz (Some t2) =>
       match Z.compare t1 t2 with Eq => true | _ => false end
   | _, _ => false
   end.
@@ -531,6 +560,8 @@ Definition interp_predicate p :=
             match Z.compare a1 a2 with Lt => true3 | _ => false3 end
           | Value_timestamp (Some a1) :: Value_timestamp (Some a2) :: nil =>
             match Z.compare a1 a2 with Lt => true3 | _ => false3 end
+          | Value_timestamptz (Some a1) :: Value_timestamptz (Some a2) :: nil =>
+            match Z.compare a1 a2 with Lt => true3 | _ => false3 end
           | _ => unknown3
         end
     | Predicate "<." =>
@@ -548,6 +579,8 @@ Definition interp_predicate p :=
           | Value_date (Some a1) :: Value_date (Some a2) :: nil =>
             match Z.compare a1 a2 with Gt => false3 | _ => true3 end
           | Value_timestamp (Some a1) :: Value_timestamp (Some a2) :: nil =>
+            match Z.compare a1 a2 with Gt => false3 | _ => true3 end
+          | Value_timestamptz (Some a1) :: Value_timestamptz (Some a2) :: nil =>
             match Z.compare a1 a2 with Gt => false3 | _ => true3 end
           | _ => unknown3
         end
@@ -567,6 +600,8 @@ Definition interp_predicate p :=
             match Z.compare a1 a2 with Gt => true3 | _ => false3 end
           | Value_timestamp (Some a1) :: Value_timestamp (Some a2) :: nil =>
             match Z.compare a1 a2 with Gt => true3 | _ => false3 end
+          | Value_timestamptz (Some a1) :: Value_timestamptz (Some a2) :: nil =>
+            match Z.compare a1 a2 with Gt => true3 | _ => false3 end
           | _ => unknown3
         end
     | Predicate ">." =>
@@ -584,6 +619,8 @@ Definition interp_predicate p :=
           | Value_date (Some a1) :: Value_date (Some a2) :: nil =>
             match Z.compare a1 a2 with Lt => false3 | _ => true3 end
           | Value_timestamp (Some a1) :: Value_timestamp (Some a2) :: nil =>
+            match Z.compare a1 a2 with Lt => false3 | _ => true3 end
+          | Value_timestamptz (Some a1) :: Value_timestamptz (Some a2) :: nil =>
             match Z.compare a1 a2 with Lt => false3 | _ => true3 end
           | _ => unknown3
         end
@@ -607,6 +644,8 @@ Definition interp_predicate p :=
             match Z.compare d1 d2 with Eq => true3 | _ => false3 end
           | Value_timestamp (Some t1) :: Value_timestamp (Some t2) :: nil =>
             match Z.compare t1 t2 with Eq => true3 | _ => false3 end
+          | Value_timestamptz (Some t1) :: Value_timestamptz (Some t2) :: nil =>
+            match Z.compare t1 t2 with Eq => true3 | _ => false3 end
           | _ => unknown3
         end
     | Predicate "<>" =>
@@ -621,6 +660,8 @@ Definition interp_predicate p :=
           | Value_date (Some d1) :: Value_date (Some d2) :: nil =>
             match Z.compare d1 d2 with Eq => false3 | _ => true3 end
           | Value_timestamp (Some t1) :: Value_timestamp (Some t2) :: nil =>
+            match Z.compare t1 t2 with Eq => false3 | _ => true3 end
+          | Value_timestamptz (Some t1) :: Value_timestamptz (Some t2) :: nil =>
             match Z.compare t1 t2 with Eq => false3 | _ => true3 end
           | _ => unknown3
         end

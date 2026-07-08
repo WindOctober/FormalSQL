@@ -56,7 +56,8 @@ Inductive attribute : Set :=
   | Attr_bool : string -> attribute
   | Attr_float : string -> attribute
   | Attr_date : string -> attribute
-  | Attr_timestamp : string -> Z -> attribute.
+  | Attr_timestamp : string -> Z -> attribute
+  | Attr_timestamptz : string -> Z -> attribute.
 
 Register attribute as datacert.attribute.type.
 Register Attr_string as datacert.attribute.Attr_string.
@@ -65,6 +66,7 @@ Register Attr_bool as datacert.attribute.Attr_bool.
 Register Attr_float as datacert.attribute.Attr_float.
 Register Attr_date as datacert.attribute.Attr_date.
 Register Attr_timestamp as datacert.attribute.Attr_timestamp.
+Register Attr_timestamptz as datacert.attribute.Attr_timestamptz.
 
 Definition type_of_attribute (a : attribute) :=
   match a with
@@ -74,6 +76,7 @@ Definition type_of_attribute (a : attribute) :=
     | Attr_float _ => type_float
     | Attr_date _ => type_date
     | Attr_timestamp _ _ => type_timestamp
+    | Attr_timestamptz _ _ => type_timestamptz
   end.
 
 Open Scope N_scope.
@@ -86,6 +89,7 @@ Definition N_of_attribute a :=
     | Attr_float _ => 3
     | Attr_date _ => 4
     | Attr_timestamp _ _ => 5
+    | Attr_timestamptz _ _ => 6
   end.
 
 Definition N2_of_attribute a :=
@@ -95,7 +99,8 @@ Definition N2_of_attribute a :=
     | Attr_bool s
     | Attr_float s
     | Attr_date s => (N_of_attribute a, (s, 0%Z))
-    | Attr_timestamp s p => (N_of_attribute a, (s, p))
+    | Attr_timestamp s p
+    | Attr_timestamptz s p => (N_of_attribute a, (s, p))
   end.
 
 Definition attribute_compare a1 a2 :=
