@@ -49,7 +49,8 @@ Inductive type :=
  | type_Z
  | type_bool
  | type_float
- | type_date.
+ | type_date
+ | type_timestamp.
 
 Open Scope N_scope.
 
@@ -61,6 +62,7 @@ Definition N_of_type :=
     | type_bool => 2
     | type_float => 3
     | type_date => 4
+    | type_timestamp => 5
     end.
 
 Definition OT : Oset.Rcd type.
@@ -147,7 +149,8 @@ Inductive value : Set :=
   | Value_Z : option Z -> value
   | Value_bool : option bool -> value
   | Value_float : option float -> value
-  | Value_date : option Z -> value.
+  | Value_date : option Z -> value
+  | Value_timestamp : option Z -> value.
 
 Register value as datacert.value.type.
 Register Value_string as datacert.value.Value_string.
@@ -155,6 +158,7 @@ Register Value_Z as datacert.value.Value_Z.
 Register Value_bool as datacert.value.Value_bool.
 Register Value_float as datacert.value.Value_float.
 Register Value_date as datacert.value.Value_date.
+Register Value_timestamp as datacert.value.Value_timestamp.
 
 Open Scope Z_scope.
 
@@ -165,6 +169,7 @@ match v with
   | Value_bool _ => type_bool
   | Value_float _ => type_float
   | Value_date _ => type_date
+  | Value_timestamp _ => type_timestamp
   end.
 
 (** Default values for each type. *)
@@ -175,6 +180,7 @@ Definition default_value d :=
     | type_bool => Value_bool None
     | type_float => Value_float None
     | type_date => Value_date None
+    | type_timestamp => Value_timestamp None
   end.
 
 Definition z_le_bool x y :=
@@ -242,6 +248,44 @@ Definition date_add_months date months :=
 
 Definition date_add_years date years := date_add_months date (years * 12).
 
+Definition micros_per_second := 1000000.
+Definition micros_per_minute := 60 * micros_per_second.
+Definition micros_per_hour := 60 * micros_per_minute.
+Definition micros_per_day := 24 * micros_per_hour.
+
+Definition valid_time h m s micros :=
+  andb (andb (z_le_bool 0 h) (z_le_bool h 23))
+       (andb (andb (z_le_bool 0 m) (z_le_bool m 59))
+             (andb (andb (z_le_bool 0 s) (z_le_bool s 59))
+                   (andb (z_le_bool 0 micros) (z_le_bool micros 999999)))).
+
+Definition timestamp_from_ymdhms y m d h minute s micros :=
+  if andb (valid_ymd y m d) (valid_time h minute s micros)
+  then Some (days_from_civil y m d * micros_per_day
+             + h * micros_per_hour
+             + minute * micros_per_minute
+             + s * micros_per_second
+             + micros)
+  else None.
+
+Definition timestamp_add_microseconds timestamp micros := timestamp + micros.
+Definition timestamp_add_seconds timestamp seconds :=
+  timestamp_add_microseconds timestamp (seconds * micros_per_second).
+Definition timestamp_add_minutes timestamp minutes :=
+  timestamp_add_microseconds timestamp (minutes * micros_per_minute).
+Definition timestamp_add_hours timestamp hours :=
+  timestamp_add_microseconds timestamp (hours * micros_per_hour).
+Definition timestamp_add_days timestamp days :=
+  timestamp_add_microseconds timestamp (days * micros_per_day).
+
+Definition timestamp_add_months timestamp months :=
+  let date := Z.div timestamp micros_per_day in
+  let time_of_day := Z.modulo timestamp micros_per_day in
+  date_add_months date months * micros_per_day + time_of_day.
+
+Definition timestamp_add_years timestamp years :=
+  timestamp_add_months timestamp (years * 12).
+
 (** injection of domain names into natural numbers in order to
     build an ordering on them.
 *)
@@ -258,38 +302,50 @@ Definition value_compare x y :=
     | Value_string _, Value_Z _
     | Value_string _, Value_bool _
     | Value_string _, Value_float _
-    | Value_string _, Value_date _ => Lt
+    | Value_string _, Value_date _
+    | Value_string _, Value_timestamp _ => Lt
 
     | Value_Z _, Value_string _ => Gt
     | Value_Z z1, Value_Z z2 => option_compare _ Z.compare z1 z2
     | Value_Z _, Value_bool _
     | Value_Z _, Value_float _
-    | Value_Z _, Value_date _ => Lt
+    | Value_Z _, Value_date _
+    | Value_Z _, Value_timestamp _ => Lt
 
     | Value_bool _, Value_string _
     | Value_bool _, Value_Z _ => Gt
     | Value_bool b1, Value_bool b2 => option_compare _ bool_compare b1 b2
     | Value_bool _, Value_float _
-    | Value_bool _, Value_date _ => Lt
+    | Value_bool _, Value_date _
+    | Value_bool _, Value_timestamp _ => Lt
 
     | Value_float _, Value_string _
     | Value_float _, Value_Z _
     | Value_float _, Value_bool _ => Gt
     | Value_float f1, Value_float f2 => option_compare _ (Oset.compare Ofloat) f1 f2
-    | Value_float _, Value_date _ => Lt
+    | Value_float _, Value_date _
+    | Value_float _, Value_timestamp _ => Lt
 
     | Value_date _, Value_string _
     | Value_date _, Value_Z _
     | Value_date _, Value_bool _
     | Value_date _, Value_float _ => Gt
     | Value_date d1, Value_date d2 => option_compare _ Z.compare d1 d2
+    | Value_date _, Value_timestamp _ => Lt
+
+    | Value_timestamp _, Value_string _
+    | Value_timestamp _, Value_Z _
+    | Value_timestamp _, Value_bool _
+    | Value_timestamp _, Value_float _
+    | Value_timestamp _, Value_date _ => Gt
+    | Value_timestamp t1, Value_timestamp t2 => option_compare _ Z.compare t1 t2
   end.
 
 Definition OVal : Oset.Rcd value.
 split with value_compare.
 - (* 1/3 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [d1 | ]]
-         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [d2 | ]];
+  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [d1 | ] | [t1 | ]]
+         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [d2 | ] | [t2 | ]];
     try discriminate; simpl; trivial.
   + generalize (Oset.eq_bool_ok Ostring s1 s2); simpl; case (string_compare s1 s2).
     * apply (f_equal (fun x => Value_string (Some x))).
@@ -311,22 +367,28 @@ split with value_compare.
     * apply (f_equal (fun x => Value_date (Some x))).
     * intros H1 H2; injection H2; apply H1.
     * intros H1 H2; injection H2; apply H1.
+  + generalize (Oset.eq_bool_ok OZ t1 t2); simpl; case (Z.compare t1 t2).
+    * apply (f_equal (fun x => Value_timestamp (Some x))).
+    * intros H1 H2; injection H2; apply H1.
+    * intros H1 H2; injection H2; apply H1.
 - (* 1/2 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [d1 | ]]
-         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [d2 | ]]
-         [[s3 | ] | [z3 | ] | [b3 | ] | [f3 | ] | [d3 | ]]; trivial; try discriminate; simpl.
+  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [d1 | ] | [t1 | ]]
+         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [d2 | ] | [t2 | ]]
+         [[s3 | ] | [z3 | ] | [b3 | ] | [f3 | ] | [d3 | ] | [t3 | ]]; trivial; try discriminate; simpl.
   + apply (Oset.compare_lt_trans Ostring).
   + apply (Oset.compare_lt_trans OZ).
   + apply (Oset.compare_lt_trans Obool).
   + apply (Oset.compare_lt_trans Ofloat).
   + apply (Oset.compare_lt_trans OZ).
+  + apply (Oset.compare_lt_trans OZ).
 - (* 1/1 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [d1 | ]]
-         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [d2 | ]]; trivial; simpl.
+  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [d1 | ] | [t1 | ]]
+         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [d2 | ] | [t2 | ]]; trivial; simpl.
   + apply (Oset.compare_lt_gt Ostring).
   + apply (Oset.compare_lt_gt OZ).
   + apply (Oset.compare_lt_gt Obool).
   + apply (Oset.compare_lt_gt Ofloat).
+  + apply (Oset.compare_lt_gt OZ).
   + apply (Oset.compare_lt_gt OZ).
 Defined.
 
@@ -338,7 +400,8 @@ Definition is_null_value v :=
   | Value_Z None
   | Value_bool None
   | Value_float None
-  | Value_date None => true
+  | Value_date None
+  | Value_timestamp None => true
   | _ => false
   end.
 
@@ -354,6 +417,8 @@ Definition same_non_null_value v1 v2 :=
       Bool.eqb b1 b2
   | Value_date (Some d1), Value_date (Some d2) =>
       match Z.compare d1 d2 with Eq => true | _ => false end
+  | Value_timestamp (Some t1), Value_timestamp (Some t2) =>
+      match Z.compare t1 t2 with Eq => true | _ => false end
   | _, _ => false
   end.
 
@@ -464,6 +529,8 @@ Definition interp_predicate p :=
             match Z.compare a1 a2 with Lt => true3 | _ => false3 end
           | Value_date (Some a1) :: Value_date (Some a2) :: nil =>
             match Z.compare a1 a2 with Lt => true3 | _ => false3 end
+          | Value_timestamp (Some a1) :: Value_timestamp (Some a2) :: nil =>
+            match Z.compare a1 a2 with Lt => true3 | _ => false3 end
           | _ => unknown3
         end
     | Predicate "<." =>
@@ -479,6 +546,8 @@ Definition interp_predicate p :=
           | Value_Z (Some a1) :: Value_Z (Some a2) :: nil =>
             match Z.compare a1 a2 with Gt => false3 | _ => true3 end
           | Value_date (Some a1) :: Value_date (Some a2) :: nil =>
+            match Z.compare a1 a2 with Gt => false3 | _ => true3 end
+          | Value_timestamp (Some a1) :: Value_timestamp (Some a2) :: nil =>
             match Z.compare a1 a2 with Gt => false3 | _ => true3 end
           | _ => unknown3
         end
@@ -496,6 +565,8 @@ Definition interp_predicate p :=
             match Z.compare a1 a2 with Gt => true3 | _ => false3 end
           | Value_date (Some a1) :: Value_date (Some a2) :: nil =>
             match Z.compare a1 a2 with Gt => true3 | _ => false3 end
+          | Value_timestamp (Some a1) :: Value_timestamp (Some a2) :: nil =>
+            match Z.compare a1 a2 with Gt => true3 | _ => false3 end
           | _ => unknown3
         end
     | Predicate ">." =>
@@ -511,6 +582,8 @@ Definition interp_predicate p :=
           | Value_Z (Some a1) :: Value_Z (Some a2) :: nil =>
             match Z.compare a1 a2 with Lt => false3 | _ => true3 end
           | Value_date (Some a1) :: Value_date (Some a2) :: nil =>
+            match Z.compare a1 a2 with Lt => false3 | _ => true3 end
+          | Value_timestamp (Some a1) :: Value_timestamp (Some a2) :: nil =>
             match Z.compare a1 a2 with Lt => false3 | _ => true3 end
           | _ => unknown3
         end
@@ -532,6 +605,8 @@ Definition interp_predicate p :=
             match string_compare s1 s2 with Eq => true3 | _ => false3 end
           | Value_date (Some d1) :: Value_date (Some d2) :: nil =>
             match Z.compare d1 d2 with Eq => true3 | _ => false3 end
+          | Value_timestamp (Some t1) :: Value_timestamp (Some t2) :: nil =>
+            match Z.compare t1 t2 with Eq => true3 | _ => false3 end
           | _ => unknown3
         end
     | Predicate "<>" =>
@@ -545,6 +620,8 @@ Definition interp_predicate p :=
             match string_compare s1 s2 with Eq => false3 | _ => true3 end
           | Value_date (Some d1) :: Value_date (Some d2) :: nil =>
             match Z.compare d1 d2 with Eq => false3 | _ => true3 end
+          | Value_timestamp (Some t1) :: Value_timestamp (Some t2) :: nil =>
+            match Z.compare t1 t2 with Eq => false3 | _ => true3 end
           | _ => unknown3
         end
     | Predicate "is_null" =>
@@ -658,6 +735,48 @@ Definition interp_symbol f :=
           | Value_date (Some d) :: Value_Z (Some years) :: nil =>
             Value_date (Some (date_add_years d years))
           | _ => Value_date None end
+    | Symbol _ "timestamp_add_microseconds" =>
+      fun l =>
+        match l with
+          | Value_timestamp (Some t) :: Value_Z (Some micros) :: nil =>
+            Value_timestamp (Some (timestamp_add_microseconds t micros))
+          | _ => Value_timestamp None end
+    | Symbol _ "timestamp_add_seconds" =>
+      fun l =>
+        match l with
+          | Value_timestamp (Some t) :: Value_Z (Some seconds) :: nil =>
+            Value_timestamp (Some (timestamp_add_seconds t seconds))
+          | _ => Value_timestamp None end
+    | Symbol _ "timestamp_add_minutes" =>
+      fun l =>
+        match l with
+          | Value_timestamp (Some t) :: Value_Z (Some minutes) :: nil =>
+            Value_timestamp (Some (timestamp_add_minutes t minutes))
+          | _ => Value_timestamp None end
+    | Symbol _ "timestamp_add_hours" =>
+      fun l =>
+        match l with
+          | Value_timestamp (Some t) :: Value_Z (Some hours) :: nil =>
+            Value_timestamp (Some (timestamp_add_hours t hours))
+          | _ => Value_timestamp None end
+    | Symbol _ "timestamp_add_days" =>
+      fun l =>
+        match l with
+          | Value_timestamp (Some t) :: Value_Z (Some days) :: nil =>
+            Value_timestamp (Some (timestamp_add_days t days))
+          | _ => Value_timestamp None end
+    | Symbol _ "timestamp_add_months" =>
+      fun l =>
+        match l with
+          | Value_timestamp (Some t) :: Value_Z (Some months) :: nil =>
+            Value_timestamp (Some (timestamp_add_months t months))
+          | _ => Value_timestamp None end
+    | Symbol _ "timestamp_add_years" =>
+      fun l =>
+        match l with
+          | Value_timestamp (Some t) :: Value_Z (Some years) :: nil =>
+            Value_timestamp (Some (timestamp_add_years t years))
+          | _ => Value_timestamp None end
     | Symbol _ "opp" =>
       fun l =>
         match l with
