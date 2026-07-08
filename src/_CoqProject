@@ -37,6 +37,9 @@ data/flat/EnvInv.v
 data/flat/FlatData.v
 data/sql/Sql.v
 data/sql/SqlAlgebra.v
+data/sql/SqlOrder.v
+data/sql/SqlListAlgebra.v
+data/sql/SqlListFacts.v
 data/proof_of_concept/TuplesImpl.v
 data/proof_of_concept/ValueCore.v
 data/proof_of_concept/ValueTemporal.v
