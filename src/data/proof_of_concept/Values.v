@@ -11,7 +11,7 @@
 (**                                                                                 *)
 (************************************************************************************)
 
-Require Import Arith NArith ZArith String List Floats.
+Require Import Arith NArith ZArith String Ascii List Floats.
 Require Import OrderedSet FiniteSet Bool3.
 Require Export ValueCore ValueTemporal ValuePredicates.
 
@@ -254,8 +254,96 @@ Definition interp_avg_float l :=
 
 Definition interp_predicate := NullPredicates.interp_predicate.
 
+Definition bool3_to_value_bool b :=
+  match b with
+  | true3 => Value_bool (Some true)
+  | false3 => Value_bool (Some false)
+  | unknown3 => Value_bool None
+  end.
+
+Definition value_bool_to_bool3 v :=
+  match v with
+  | Value_bool (Some true) => true3
+  | Value_bool (Some false) => false3
+  | Value_bool None => unknown3
+  | _ => unknown3
+  end.
+
+Definition interp_boolean_predicate p l :=
+  bool3_to_value_bool (interp_predicate p l).
+
+Definition interp_bool_and l :=
+  match l with
+  | v1 :: v2 :: nil =>
+      bool3_to_value_bool (andb3 (value_bool_to_bool3 v1) (value_bool_to_bool3 v2))
+  | _ => Value_bool None
+  end.
+
+Definition interp_bool_or l :=
+  match l with
+  | v1 :: v2 :: nil =>
+      bool3_to_value_bool (orb3 (value_bool_to_bool3 v1) (value_bool_to_bool3 v2))
+  | _ => Value_bool None
+  end.
+
+Definition interp_bool_not l :=
+  match l with
+  | v :: nil => bool3_to_value_bool (negb3 (value_bool_to_bool3 v))
+  | _ => Value_bool None
+  end.
+
+Definition ascii_to_upper c :=
+  let n := nat_of_ascii c in
+  if andb (Nat.leb 97 n) (Nat.leb n 122)
+  then ascii_of_nat (n - 32)
+  else c.
+
+Definition ascii_to_lower c :=
+  let n := nat_of_ascii c in
+  if andb (Nat.leb 65 n) (Nat.leb n 90)
+  then ascii_of_nat (n + 32)
+  else c.
+
+Fixpoint string_map (f : ascii -> ascii) s :=
+  match s with
+  | EmptyString => EmptyString
+  | String c rest => String (f c) (string_map f rest)
+  end.
+
+Definition interp_upper_string l :=
+  match l with
+  | Value_string (Some s) :: nil => Value_string (Some (string_map ascii_to_upper s))
+  | Value_string None :: nil => Value_string None
+  | _ => Value_string None
+  end.
+
+Definition interp_lower_string l :=
+  match l with
+  | Value_string (Some s) :: nil => Value_string (Some (string_map ascii_to_lower s))
+  | Value_string None :: nil => Value_string None
+  | _ => Value_string None
+  end.
+
 Definition interp_symbol f :=
   match f with
+    | Symbol _ "=" => fun l => interp_boolean_predicate (Predicate "=") l
+    | Symbol _ "<>" => fun l => interp_boolean_predicate (Predicate "<>") l
+    | Symbol _ "<" => fun l => interp_boolean_predicate (Predicate "<") l
+    | Symbol _ "<=" => fun l => interp_boolean_predicate (Predicate "<=") l
+    | Symbol _ ">" => fun l => interp_boolean_predicate (Predicate ">") l
+    | Symbol _ ">=" => fun l => interp_boolean_predicate (Predicate ">=") l
+    | Symbol _ "is_null" => fun l => interp_boolean_predicate (Predicate "is_null") l
+    | Symbol _ "is_not_null" => fun l => interp_boolean_predicate (Predicate "is_not_null") l
+    | Symbol _ "is_true" => fun l => interp_boolean_predicate (Predicate "is_true") l
+    | Symbol _ "is_not_true" => fun l => interp_boolean_predicate (Predicate "is_not_true") l
+    | Symbol _ "is_false" => fun l => interp_boolean_predicate (Predicate "is_false") l
+    | Symbol _ "is_not_false" => fun l => interp_boolean_predicate (Predicate "is_not_false") l
+    | Symbol _ "is_not_distinct_from" => fun l => interp_boolean_predicate (Predicate "is_not_distinct_from") l
+    | Symbol _ "and" => interp_bool_and
+    | Symbol _ "or" => interp_bool_or
+    | Symbol _ "not" => interp_bool_not
+    | Symbol _ "upper" => interp_upper_string
+    | Symbol _ "lower" => interp_lower_string
     | Symbol _ "plus" =>
       fun l =>
         match l with
