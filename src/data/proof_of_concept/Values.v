@@ -292,6 +292,18 @@ Definition interp_bool_not l :=
   | _ => Value_bool None
   end.
 
+Fixpoint interp_case_values l :=
+  match l with
+  | condition :: then_value :: rest =>
+      match value_bool_to_bool3 condition with
+      | true3 => then_value
+      | false3 => interp_case_values rest
+      | unknown3 => interp_case_values rest
+      end
+  | else_value :: nil => else_value
+  | nil => Value_Z None
+  end.
+
 Definition ascii_to_upper c :=
   let n := nat_of_ascii c in
   if andb (Nat.leb 97 n) (Nat.leb n 122)
@@ -342,6 +354,7 @@ Definition interp_symbol f :=
     | Symbol _ "and" => interp_bool_and
     | Symbol _ "or" => interp_bool_or
     | Symbol _ "not" => interp_bool_not
+    | Symbol _ "case" => interp_case_values
     | Symbol _ "upper" => interp_upper_string
     | Symbol _ "lower" => interp_lower_string
     | Symbol _ "plus" =>
