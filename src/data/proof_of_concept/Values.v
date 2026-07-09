@@ -183,6 +183,9 @@ Fixpoint float_values l :=
 Definition non_null_count l :=
   Z_of_nat (List.length (filter (fun v => negb (is_null_value v)) l)).
 
+Definition row_count (l : list value) :=
+  Z_of_nat (List.length l).
+
 Definition interp_sum_z l :=
   if forallb is_z_value l then
     match z_values l with
@@ -489,6 +492,7 @@ Definition interp_symbol f :=
 
 Definition interp_aggregate a l :=
   match a with
+    | ValueCore.Aggregate "count_star" => Value_Z (Some (row_count l))
     | ValueCore.Aggregate "count" => Value_Z (Some (non_null_count l))
     | ValueCore.Aggregate "sum" => interp_sum_z l
     | ValueCore.Aggregate "sum." => interp_sum_float l
