@@ -55,6 +55,7 @@ Inductive attribute : Set :=
   | Attr_Z : string -> attribute
   | Attr_bool : string -> attribute
   | Attr_float : string -> attribute
+  | Attr_decimal : string -> Z -> Z -> attribute
   | Attr_date : string -> attribute
   | Attr_timestamp : string -> Z -> attribute
   | Attr_timestamptz : string -> Z -> attribute.
@@ -64,6 +65,7 @@ Register Attr_string as datacert.attribute.Attr_string.
 Register Attr_Z as datacert.attribute.Attr_Z.
 Register Attr_bool as datacert.attribute.Attr_bool.
 Register Attr_float as datacert.attribute.Attr_float.
+Register Attr_decimal as datacert.attribute.Attr_decimal.
 Register Attr_date as datacert.attribute.Attr_date.
 Register Attr_timestamp as datacert.attribute.Attr_timestamp.
 Register Attr_timestamptz as datacert.attribute.Attr_timestamptz.
@@ -74,6 +76,7 @@ Definition type_of_attribute (a : attribute) :=
     | Attr_Z _ => type_Z
     | Attr_bool _  => type_bool
     | Attr_float _ => type_float
+    | Attr_decimal _ _ _ => type_decimal
     | Attr_date _ => type_date
     | Attr_timestamp _ _ => type_timestamp
     | Attr_timestamptz _ _ => type_timestamptz
@@ -87,9 +90,10 @@ Definition N_of_attribute a :=
     | Attr_Z _ => 1
     | Attr_bool _ => 2
     | Attr_float _ => 3
-    | Attr_date _ => 4
-    | Attr_timestamp _ _ => 5
-    | Attr_timestamptz _ _ => 6
+    | Attr_decimal _ _ _ => 4
+    | Attr_date _ => 5
+    | Attr_timestamp _ _ => 6
+    | Attr_timestamptz _ _ => 7
   end.
 
 Definition N2_of_attribute a :=
@@ -98,39 +102,40 @@ Definition N2_of_attribute a :=
     | Attr_Z s
     | Attr_bool s
     | Attr_float s
-    | Attr_date s => (N_of_attribute a, (s, 0%Z))
+    | Attr_date s => (N_of_attribute a, (s, (0%Z, 0%Z)))
+    | Attr_decimal s p sc => (N_of_attribute a, (s, (p, sc)))
     | Attr_timestamp s p
-    | Attr_timestamptz s p => (N_of_attribute a, (s, p))
+    | Attr_timestamptz s p => (N_of_attribute a, (s, (p, 0%Z)))
   end.
 
 Definition attribute_compare a1 a2 :=
-  compareAB N.compare (compareAB string_compare Z.compare)
+  compareAB N.compare (compareAB string_compare (compareAB Z.compare Z.compare))
     (N2_of_attribute a1) (N2_of_attribute a2).
 
 Definition OAN : Oset.Rcd attribute.
 Proof.
 split with attribute_compare.
 - intros a1 a2; unfold attribute_compare.
-  assert (match compareAB N.compare (compareAB string_compare Z.compare)
+  assert (match compareAB N.compare (compareAB string_compare (compareAB Z.compare Z.compare))
                            (N2_of_attribute a1) (N2_of_attribute a2) with
              | Eq => (N2_of_attribute a1) = (N2_of_attribute a2)
              | Lt => (N2_of_attribute a1) <> (N2_of_attribute a2)
              | Gt => (N2_of_attribute a1) <> (N2_of_attribute a2)
            end).
   {
-    destruct (N2_of_attribute a1) as [n1 [s1 p1]];
-    destruct (N2_of_attribute a2) as [n2 [s2 p2]].
+    destruct (N2_of_attribute a1) as [n1 [s1 [p1 sc1]]];
+    destruct (N2_of_attribute a2) as [n2 [s2 [p2 sc2]]].
     compareAB_eq_bool_ok_tac.
     - apply (Oset.eq_bool_ok ON).
     - compareAB_eq_bool_ok_tac.
       + apply (Oset.eq_bool_ok Ostring).
-      + apply (Oset.eq_bool_ok OZ).
+      + compareAB_eq_bool_ok_tac; apply (Oset.eq_bool_ok OZ).
   }
   case_eq (N2_of_attribute a1); intros n1 sp1 H1;
   case_eq (N2_of_attribute a2); intros n2 sp2 H2;
   rewrite H1, H2 in H.
-  destruct (compareAB 
-              N.compare (compareAB string_compare Z.compare)
+  destruct (compareAB
+              N.compare (compareAB string_compare (compareAB Z.compare Z.compare))
               (n1, sp1) (n2, sp2)).
   + injection H; clear H; do 2 intro.
     subst sp2 n2; rewrite <- H2 in H1.
@@ -150,13 +155,18 @@ split with attribute_compare.
     * apply (Oset.compare_eq_lt_trans Ostring).
     * apply (Oset.compare_lt_eq_trans Ostring).
     * apply (Oset.compare_lt_trans Ostring).
-    * apply (Oset.compare_lt_trans OZ).
+    * compareAB_tac.
+      -- apply (Oset.compare_eq_trans OZ).
+      -- apply (Oset.compare_eq_lt_trans OZ).
+      -- apply (Oset.compare_lt_eq_trans OZ).
+      -- apply (Oset.compare_lt_trans OZ).
+      -- apply (Oset.compare_lt_trans OZ).
 - intros a1 a2; unfold attribute_compare.
   compareAB_tac.
   + apply (Oset.compare_lt_gt ON).
   + compareAB_tac.
     * apply (Oset.compare_lt_gt Ostring).
-    * apply (Oset.compare_lt_gt OZ).
+    * compareAB_tac; apply (Oset.compare_lt_gt OZ).
 Defined.
 
 Definition FAN := Fset.build OAN.

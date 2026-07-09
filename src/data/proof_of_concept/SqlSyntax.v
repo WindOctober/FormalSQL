@@ -26,6 +26,7 @@ Definition Value_bool := NullValues.Value_bool.
 Definition Value_Z := NullValues.Value_Z.
 Definition Value_string := NullValues.Value_string.
 Definition Value_float := NullValues.Value_float.
+Definition Value_decimal := NullValues.Value_decimal.
 Definition Value_date := NullValues.Value_date.
 Definition Value_timestamp := NullValues.Value_timestamp.
 Definition Value_timestamptz := NullValues.Value_timestamptz.
@@ -64,6 +65,7 @@ Fixpoint mk_att att atts vals :=
                 | Attr_Z _ => Value_Z None
                 | Attr_bool _ => Value_bool None
                 | Attr_float _ => Value_float None
+                | Attr_decimal _ _ _ => Value_decimal None
                 | Attr_date _ => Value_date None
                 | Attr_timestamp _ _ => Value_timestamp None
                 | Attr_timestamptz _ _ => Value_timestamptz None
@@ -220,6 +222,7 @@ Definition contains_nulls (t : tuple TNull) :=
                    | NullValues.Value_Z None
                    | NullValues.Value_bool None
                    | NullValues.Value_float None
+                   | NullValues.Value_decimal None
                    | NullValues.Value_date None
                    | NullValues.Value_timestamp None
                    | NullValues.Value_timestamptz None => true
@@ -227,6 +230,7 @@ Definition contains_nulls (t : tuple TNull) :=
                    | NullValues.Value_Z (Some _)
                    | NullValues.Value_bool (Some _)
                    | NullValues.Value_float (Some _)
+                   | NullValues.Value_decimal (Some _)
                    | NullValues.Value_date (Some _)
                    | NullValues.Value_timestamp (Some _)
                    | NullValues.Value_timestamptz (Some _) => false

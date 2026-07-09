@@ -52,6 +52,7 @@ Definition mk_role mid pid n :=
               | Attr_Z _ => Value_Z None
               | Attr_bool _ => Value_bool None
               | Attr_float _ => Value_float None
+              | Attr_decimal _ _ _ => Value_decimal None
               | Attr_date _ => Value_date None
               | Attr_timestamp _ _ => Value_timestamp None
               | Attr_timestamptz _ _ => Value_timestamptz None
@@ -80,6 +81,7 @@ Definition mk_director mid pid :=
               | Attr_Z _ => Value_Z None
               | Attr_bool _ => Value_bool None
               | Attr_float _ => Value_float None
+              | Attr_decimal _ _ _ => Value_decimal None
               | Attr_date _ => Value_date None
               | Attr_timestamp _ _ => Value_timestamp None
               | Attr_timestamptz _ _ => Value_timestamptz None
@@ -107,6 +109,7 @@ Definition mk_movie mid t y rt rk :=
               | Attr_Z _ => Value_Z None
               | Attr_bool _ => Value_bool None
               | Attr_float _ => Value_float None
+              | Attr_decimal _ _ _ => Value_decimal None
               | Attr_date _ => Value_date None
               | Attr_timestamp _ _ => Value_timestamp None
               | Attr_timestamptz _ _ => Value_timestamptz None
@@ -133,6 +136,7 @@ Definition mk_people pid f l :=
               | Attr_Z _ => Value_Z None
               | Attr_bool _ => Value_bool None
               | Attr_float _ => Value_float None
+              | Attr_decimal _ _ _ => Value_decimal None
               | Attr_date _ => Value_date None
               | Attr_timestamp _ _ => Value_timestamp None
               | Attr_timestamptz _ _ => Value_timestamptz None
@@ -186,6 +190,5 @@ Abort.
 *)
 
 (* Eval compute in (eval_sql_query_in_state db_movie query0). *)
-
 
 

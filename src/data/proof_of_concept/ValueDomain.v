@@ -13,7 +13,7 @@
 
 Require Import ZArith String Floats Bool.
 Require Import OrderedSet.
-Require Export ValueCore.
+Require Export ValueCore ValueDecimal.
 
 Module NullValueDomain.
 
@@ -25,6 +25,7 @@ Inductive value : Set :=
   | Value_Z : option Z -> value
   | Value_bool : option bool -> value
   | Value_float : option float -> value
+  | Value_decimal : option decimal -> value
   | Value_date : option Z -> value
   | Value_timestamp : option Z -> value
   | Value_timestamptz : option Z -> value.
@@ -34,6 +35,7 @@ Register Value_string as datacert.value.Value_string.
 Register Value_Z as datacert.value.Value_Z.
 Register Value_bool as datacert.value.Value_bool.
 Register Value_float as datacert.value.Value_float.
+Register Value_decimal as datacert.value.Value_decimal.
 Register Value_date as datacert.value.Value_date.
 Register Value_timestamp as datacert.value.Value_timestamp.
 Register Value_timestamptz as datacert.value.Value_timestamptz.
@@ -46,6 +48,7 @@ match v with
   | Value_Z _ => type_Z
   | Value_bool _ => type_bool
   | Value_float _ => type_float
+  | Value_decimal _ => type_decimal
   | Value_date _ => type_date
   | Value_timestamp _ => type_timestamp
   | Value_timestamptz _ => type_timestamptz
@@ -58,6 +61,7 @@ Definition default_value d :=
     | type_Z => Value_Z None
     | type_bool => Value_bool None
     | type_float => Value_float None
+    | type_decimal => Value_decimal None
     | type_date => Value_date None
     | type_timestamp => Value_timestamp None
     | type_timestamptz => Value_timestamptz None
@@ -69,6 +73,7 @@ Definition is_null_value v :=
   | Value_Z None
   | Value_bool None
   | Value_float None
+  | Value_decimal None
   | Value_date None
   | Value_timestamp None
   | Value_timestamptz None => true
@@ -81,6 +86,8 @@ Definition same_non_null_value v1 v2 :=
       match Z.compare a1 a2 with Eq => true | _ => false end
   | Value_float (Some a1), Value_float (Some a2) =>
       float_eq_dec a1 a2
+  | Value_decimal (Some a1), Value_decimal (Some a2) =>
+      decimal_eqb a1 a2
   | Value_string (Some s1), Value_string (Some s2) =>
       match string_compare s1 s2 with Eq => true | _ => false end
   | Value_bool (Some b1), Value_bool (Some b2) =>

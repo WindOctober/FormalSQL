@@ -31,6 +31,8 @@ Definition interp_predicate p :=
               | Value_timestamp (Some a1), Value_timestamp (Some a2)
               | Value_timestamptz (Some a1), Value_timestamptz (Some a2) =>
                 match Z.compare a1 a2 with Lt => true3 | _ => false3 end
+              | Value_decimal (Some a1), Value_decimal (Some a2) =>
+                match decimal_compare a1 a2 with Lt => true3 | _ => false3 end
               | _, _ => unknown3
             end
           | _ => unknown3
@@ -52,6 +54,8 @@ Definition interp_predicate p :=
               | Value_timestamp (Some a1), Value_timestamp (Some a2)
               | Value_timestamptz (Some a1), Value_timestamptz (Some a2) =>
                 match Z.compare a1 a2 with Gt => false3 | _ => true3 end
+              | Value_decimal (Some a1), Value_decimal (Some a2) =>
+                match decimal_compare a1 a2 with Gt => false3 | _ => true3 end
               | _, _ => unknown3
             end
           | _ => unknown3
@@ -73,6 +77,8 @@ Definition interp_predicate p :=
               | Value_timestamp (Some a1), Value_timestamp (Some a2)
               | Value_timestamptz (Some a1), Value_timestamptz (Some a2) =>
                 match Z.compare a1 a2 with Gt => true3 | _ => false3 end
+              | Value_decimal (Some a1), Value_decimal (Some a2) =>
+                match decimal_compare a1 a2 with Gt => true3 | _ => false3 end
               | _, _ => unknown3
             end
           | _ => unknown3
@@ -94,6 +100,8 @@ Definition interp_predicate p :=
               | Value_timestamp (Some a1), Value_timestamp (Some a2)
               | Value_timestamptz (Some a1), Value_timestamptz (Some a2) =>
                 match Z.compare a1 a2 with Lt => false3 | _ => true3 end
+              | Value_decimal (Some a1), Value_decimal (Some a2) =>
+                match decimal_compare a1 a2 with Lt => false3 | _ => true3 end
               | _, _ => unknown3
             end
           | _ => unknown3
@@ -115,6 +123,8 @@ Definition interp_predicate p :=
               | Value_timestamp (Some a1), Value_timestamp (Some a2)
               | Value_timestamptz (Some a1), Value_timestamptz (Some a2) =>
                 match Z.compare a1 a2 with Eq => true3 | _ => false3 end
+              | Value_decimal (Some a1), Value_decimal (Some a2) =>
+                match decimal_compare a1 a2 with Eq => true3 | _ => false3 end
               | Value_float (Some a1), Value_float (Some a2) =>
                 if float_eq_dec a1 a2 then true3 else false3
               | Value_string (Some s1), Value_string (Some s2) =>
@@ -133,6 +143,8 @@ Definition interp_predicate p :=
               | Value_timestamp (Some a1), Value_timestamp (Some a2)
               | Value_timestamptz (Some a1), Value_timestamptz (Some a2) =>
                 match Z.compare a1 a2 with Eq => false3 | _ => true3 end
+              | Value_decimal (Some a1), Value_decimal (Some a2) =>
+                match decimal_compare a1 a2 with Eq => false3 | _ => true3 end
               | Value_float (Some a1), Value_float (Some a2) =>
                 if float_eq_dec a1 a2 then false3 else true3
               | Value_string (Some s1), Value_string (Some s2) =>

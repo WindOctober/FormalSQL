@@ -43,6 +43,7 @@ data/sql/SqlListFacts.v
 data/proof_of_concept/TuplesImpl.v
 data/proof_of_concept/ValueCore.v
 data/proof_of_concept/ValueTemporal.v
+data/proof_of_concept/ValueDecimal.v
 data/proof_of_concept/ValueDomain.v
 data/proof_of_concept/ValuePredicates.v
 data/proof_of_concept/Values.v
