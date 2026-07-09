@@ -11,7 +11,7 @@
 (**                                                                                 *)
 (************************************************************************************)
 
-Require Import ZArith String Floats List.
+Require Import ZArith String List.
 Require Import OrderedSet Bool3.
 Require Export ValueCore ValueDomain.
 
@@ -41,7 +41,14 @@ Definition interp_predicate p :=
       fun l =>
         match l with
           | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
-            if float_lt a1 a2 then true3 else false3
+            if float32_ltb a1 a2 then true3 else false3
+          | _ => unknown3
+        end
+    | Predicate "<_double" =>
+      fun l =>
+        match l with
+          | Value_double (Some a1) :: Value_double (Some a2) :: nil =>
+            if float64_ltb a1 a2 then true3 else false3
           | _ => unknown3
         end
     | Predicate "<=" =>
@@ -64,7 +71,14 @@ Definition interp_predicate p :=
       fun l =>
         match l with
           | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
-            if float_le a1 a2 then true3 else false3
+            if float32_leb a1 a2 then true3 else false3
+          | _ => unknown3
+        end
+    | Predicate "<=_double" =>
+      fun l =>
+        match l with
+          | Value_double (Some a1) :: Value_double (Some a2) :: nil =>
+            if float64_leb a1 a2 then true3 else false3
           | _ => unknown3
         end
     | Predicate ">" =>
@@ -87,7 +101,14 @@ Definition interp_predicate p :=
       fun l =>
         match l with
           | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
-            if float_lt a2 a1 then true3 else false3
+            if float32_ltb a2 a1 then true3 else false3
+          | _ => unknown3
+        end
+    | Predicate ">_double" =>
+      fun l =>
+        match l with
+          | Value_double (Some a1) :: Value_double (Some a2) :: nil =>
+            if float64_ltb a2 a1 then true3 else false3
           | _ => unknown3
         end
     | Predicate ">=" =>
@@ -110,7 +131,14 @@ Definition interp_predicate p :=
       fun l =>
         match l with
           | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
-            if float_le a2 a1 then true3 else false3
+            if float32_leb a2 a1 then true3 else false3
+          | _ => unknown3
+        end
+    | Predicate ">=_double" =>
+      fun l =>
+        match l with
+          | Value_double (Some a1) :: Value_double (Some a2) :: nil =>
+            if float64_leb a2 a1 then true3 else false3
           | _ => unknown3
         end
     | Predicate "=" =>
@@ -126,7 +154,9 @@ Definition interp_predicate p :=
               | Value_decimal (Some a1), Value_decimal (Some a2) =>
                 match decimal_compare a1 a2 with Eq => true3 | _ => false3 end
               | Value_float (Some a1), Value_float (Some a2) =>
-                if float_eq_dec a1 a2 then true3 else false3
+                if float32_eqb a1 a2 then true3 else false3
+              | Value_double (Some a1), Value_double (Some a2) =>
+                if float64_eqb a1 a2 then true3 else false3
               | Value_string (Some s1), Value_string (Some s2) =>
                 match string_compare s1 s2 with Eq => true3 | _ => false3 end
               | _, _ => unknown3
@@ -146,7 +176,9 @@ Definition interp_predicate p :=
               | Value_decimal (Some a1), Value_decimal (Some a2) =>
                 match decimal_compare a1 a2 with Eq => false3 | _ => true3 end
               | Value_float (Some a1), Value_float (Some a2) =>
-                if float_eq_dec a1 a2 then false3 else true3
+                if float32_eqb a1 a2 then false3 else true3
+              | Value_double (Some a1), Value_double (Some a2) =>
+                if float64_eqb a1 a2 then false3 else true3
               | Value_string (Some s1), Value_string (Some s2) =>
                 match string_compare s1 s2 with Eq => false3 | _ => true3 end
               | _, _ => unknown3

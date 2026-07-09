@@ -11,24 +11,9 @@
 (**                                                                                 *)
 (************************************************************************************)
 
-Require Import Arith NArith ZArith String List Floats.
+Require Import Arith NArith ZArith String List.
 Require Import OrderedSet FiniteSet Bool3.
-
-Definition float_lt := PrimFloat.ltb.
-Definition float_le := PrimFloat.leb.
-Definition float_eq_dec := PrimFloat.eqb.
-Definition float_add := PrimFloat.add.
-Definition float_mult := PrimFloat.mul.
-Definition float_sub := PrimFloat.sub.
-Definition float_div := PrimFloat.div.
-Definition float_zero := PrimFloat.zero.
-Definition float_of_int z := PrimFloat.of_uint63 (Uint63.of_Z z).
-Definition float_max f1 f2 := if float_lt f1 f2 then f2 else f1.
-Definition float_min f1 f2 := if float_lt f1 f2 then f1 else f2.
-
-Module JsNumber.
-  Definition neg_infinity := PrimFloat.neg_infinity.
-End JsNumber.
+Require Export ValueFloat.
 
 Definition option_compare (A : Type) (c : A -> A -> comparison) x y :=
   match x, y with
@@ -49,6 +34,7 @@ Inductive type :=
  | type_Z
  | type_bool
  | type_float
+ | type_double
  | type_decimal
  | type_date
  | type_timestamp
@@ -63,10 +49,11 @@ Definition N_of_type :=
     | type_Z => 1
     | type_bool => 2
     | type_float => 3
-    | type_decimal => 4
-    | type_date => 5
-    | type_timestamp => 6
-    | type_timestamptz => 7
+    | type_double => 4
+    | type_decimal => 5
+    | type_date => 6
+    | type_timestamp => 7
+    | type_timestamptz => 8
     end.
 
 Definition OT : Oset.Rcd type.

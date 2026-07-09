@@ -55,6 +55,7 @@ Inductive attribute : Set :=
   | Attr_Z : string -> attribute
   | Attr_bool : string -> attribute
   | Attr_float : string -> attribute
+  | Attr_double : string -> attribute
   | Attr_decimal : string -> Z -> Z -> attribute
   | Attr_date : string -> attribute
   | Attr_timestamp : string -> Z -> attribute
@@ -65,6 +66,7 @@ Register Attr_string as datacert.attribute.Attr_string.
 Register Attr_Z as datacert.attribute.Attr_Z.
 Register Attr_bool as datacert.attribute.Attr_bool.
 Register Attr_float as datacert.attribute.Attr_float.
+Register Attr_double as datacert.attribute.Attr_double.
 Register Attr_decimal as datacert.attribute.Attr_decimal.
 Register Attr_date as datacert.attribute.Attr_date.
 Register Attr_timestamp as datacert.attribute.Attr_timestamp.
@@ -76,6 +78,7 @@ Definition type_of_attribute (a : attribute) :=
     | Attr_Z _ => type_Z
     | Attr_bool _  => type_bool
     | Attr_float _ => type_float
+    | Attr_double _ => type_double
     | Attr_decimal _ _ _ => type_decimal
     | Attr_date _ => type_date
     | Attr_timestamp _ _ => type_timestamp
@@ -90,10 +93,11 @@ Definition N_of_attribute a :=
     | Attr_Z _ => 1
     | Attr_bool _ => 2
     | Attr_float _ => 3
-    | Attr_decimal _ _ _ => 4
-    | Attr_date _ => 5
-    | Attr_timestamp _ _ => 6
-    | Attr_timestamptz _ _ => 7
+    | Attr_double _ => 4
+    | Attr_decimal _ _ _ => 5
+    | Attr_date _ => 6
+    | Attr_timestamp _ _ => 7
+    | Attr_timestamptz _ _ => 8
   end.
 
 Definition N2_of_attribute a :=
@@ -102,6 +106,7 @@ Definition N2_of_attribute a :=
     | Attr_Z s
     | Attr_bool s
     | Attr_float s
+    | Attr_double s
     | Attr_date s => (N_of_attribute a, (s, (0%Z, 0%Z)))
     | Attr_decimal s p sc => (N_of_attribute a, (s, (p, sc)))
     | Attr_timestamp s p

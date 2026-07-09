@@ -11,9 +11,9 @@
 (**                                                                                 *)
 (************************************************************************************)
 
-Require Import ZArith String Floats Bool.
+Require Import ZArith String Bool.
 Require Import OrderedSet.
-Require Export ValueCore ValueDecimal.
+Require Export ValueCore ValueDecimal ValueFloat.
 
 Module NullValueDomain.
 
@@ -24,7 +24,8 @@ Inductive value : Set :=
   | Value_string : option string -> value
   | Value_Z : option Z -> value
   | Value_bool : option bool -> value
-  | Value_float : option float -> value
+  | Value_float : option float32 -> value
+  | Value_double : option float64 -> value
   | Value_decimal : option decimal -> value
   | Value_date : option Z -> value
   | Value_timestamp : option Z -> value
@@ -35,6 +36,7 @@ Register Value_string as datacert.value.Value_string.
 Register Value_Z as datacert.value.Value_Z.
 Register Value_bool as datacert.value.Value_bool.
 Register Value_float as datacert.value.Value_float.
+Register Value_double as datacert.value.Value_double.
 Register Value_decimal as datacert.value.Value_decimal.
 Register Value_date as datacert.value.Value_date.
 Register Value_timestamp as datacert.value.Value_timestamp.
@@ -48,6 +50,7 @@ match v with
   | Value_Z _ => type_Z
   | Value_bool _ => type_bool
   | Value_float _ => type_float
+  | Value_double _ => type_double
   | Value_decimal _ => type_decimal
   | Value_date _ => type_date
   | Value_timestamp _ => type_timestamp
@@ -61,6 +64,7 @@ Definition default_value d :=
     | type_Z => Value_Z None
     | type_bool => Value_bool None
     | type_float => Value_float None
+    | type_double => Value_double None
     | type_decimal => Value_decimal None
     | type_date => Value_date None
     | type_timestamp => Value_timestamp None
@@ -73,6 +77,7 @@ Definition is_null_value v :=
   | Value_Z None
   | Value_bool None
   | Value_float None
+  | Value_double None
   | Value_decimal None
   | Value_date None
   | Value_timestamp None
@@ -85,7 +90,9 @@ Definition same_non_null_value v1 v2 :=
   | Value_Z (Some a1), Value_Z (Some a2) =>
       match Z.compare a1 a2 with Eq => true | _ => false end
   | Value_float (Some a1), Value_float (Some a2) =>
-      float_eq_dec a1 a2
+      float32_eqb a1 a2
+  | Value_double (Some a1), Value_double (Some a2) =>
+      float64_eqb a1 a2
   | Value_decimal (Some a1), Value_decimal (Some a2) =>
       decimal_eqb a1 a2
   | Value_string (Some s1), Value_string (Some s2) =>
