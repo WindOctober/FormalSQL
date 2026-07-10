@@ -48,6 +48,7 @@ Hypothesis contains_nulls : tuple -> bool.
  *)
 
 Inductive list_query : Type :=
+  | L_EmptyRelation : setA -> list_query
   | L_Bag : @query T relname -> list_query
   | L_OrderBy : list (sort_key T) -> list_query -> list_query
   | L_Offset : nat -> list_query -> list_query
@@ -55,6 +56,7 @@ Inductive list_query : Type :=
 
 Fixpoint list_query_sort (q : list_query) : setA :=
   match q with
+  | L_EmptyRelation s => s
   | L_Bag q => @sort T relname basesort q
   | L_OrderBy _ q
   | L_Offset _ q
@@ -69,6 +71,7 @@ Definition sort_keys_in_scope (scope : setA) (keys : list (sort_key T)) : Prop :
 
 Fixpoint well_formed_list_query (q : list_query) : Prop :=
   match q with
+  | L_EmptyRelation _ => True
   | L_Bag _ => True
   | L_OrderBy keys q =>
       well_formed_list_query q /\ sort_keys_in_scope (list_query_sort q) keys
@@ -95,6 +98,7 @@ Fixpoint eval_list_query
     (q : list_query)
     (rows : list tuple) : Prop :=
   match q with
+  | L_EmptyRelation _ => rows = nil
   | L_Bag q =>
       same_rows_as_bag rows
         (@eval_query T relname basesort instance unknown contains_nulls env q)
