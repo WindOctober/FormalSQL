@@ -812,26 +812,52 @@ Definition interp_symbol f :=
     | _ => fun _ => Value_Z None
   end.
 
+Fixpoint distinct_values l :=
+  match l with
+    | nil => nil
+    | v :: l' =>
+      if Oset.mem_bool OVal v l'
+      then distinct_values l'
+      else v :: distinct_values l'
+  end.
+
 Definition interp_aggregate a l :=
   match a with
     | ValueCore.Aggregate "count_star" => Value_Z (Some (row_count l))
     | ValueCore.Aggregate "count" => Value_Z (Some (non_null_count l))
+    | ValueCore.Aggregate "__logos_distinct_aggregate_count" => Value_Z (Some (non_null_count (distinct_values l)))
     | ValueCore.Aggregate "sum" => interp_sum_z l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_sum" => interp_sum_z (distinct_values l)
     | ValueCore.Aggregate "sum." => interp_sum_float l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_sum." => interp_sum_float (distinct_values l)
     | ValueCore.Aggregate "sum_double" => interp_sum_double l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_sum_double" => interp_sum_double (distinct_values l)
     | ValueCore.Aggregate "sum_decimal" => interp_sum_decimal l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_sum_decimal" => interp_sum_decimal (distinct_values l)
     | ValueCore.Aggregate "max" => interp_max_z l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_max" => interp_max_z (distinct_values l)
     | ValueCore.Aggregate "max." => interp_max_float l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_max." => interp_max_float (distinct_values l)
     | ValueCore.Aggregate "max_double" => interp_max_double l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_max_double" => interp_max_double (distinct_values l)
     | ValueCore.Aggregate "max_decimal" => interp_max_decimal l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_max_decimal" => interp_max_decimal (distinct_values l)
     | ValueCore.Aggregate "min" => interp_min_z l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_min" => interp_min_z (distinct_values l)
     | ValueCore.Aggregate "min." => interp_min_float l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_min." => interp_min_float (distinct_values l)
     | ValueCore.Aggregate "min_double" => interp_min_double l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_min_double" => interp_min_double (distinct_values l)
     | ValueCore.Aggregate "min_decimal" => interp_min_decimal l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_min_decimal" => interp_min_decimal (distinct_values l)
     | ValueCore.Aggregate "avg" => interp_avg_z l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_avg" => interp_avg_z (distinct_values l)
     | ValueCore.Aggregate "avg." => interp_avg_float l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_avg." => interp_avg_float (distinct_values l)
     | ValueCore.Aggregate "avg_double" => interp_avg_double l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_avg_double" => interp_avg_double (distinct_values l)
     | ValueCore.Aggregate "avg_decimal" => interp_avg_decimal l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_avg_decimal" => interp_avg_decimal (distinct_values l)
     | ValueCore.Aggregate _ => Value_Z None
   end.
 
