@@ -625,6 +625,29 @@ Definition interp_symbol f :=
             | None => Value_decimal None
             end
           | _ => Value_decimal None end
+    | Symbol _ "cast_decimal_typmod" =>
+      fun l =>
+        match l with
+          | Value_decimal (Some d) ::
+            Value_Z (Some result_precision) :: Value_Z (Some result_scale) :: nil =>
+            match decimal_cast_typmod d result_precision result_scale with
+            | Some result => Value_decimal (Some result)
+            | None => Value_decimal None
+            end
+          | _ => Value_decimal None end
+    | Symbol _ "cast_z_to_decimal_typmod" =>
+      fun l =>
+        match l with
+          | Value_Z (Some z) ::
+            Value_Z (Some result_precision) :: Value_Z (Some result_scale) :: nil =>
+            match decimal_checked
+              result_precision
+              result_scale
+              (z * decimal_pow10 result_scale) with
+            | Some result => Value_decimal (Some result)
+            | None => Value_decimal None
+            end
+          | _ => Value_decimal None end
     | Symbol _ "minus" =>
       fun l =>
         match l with
