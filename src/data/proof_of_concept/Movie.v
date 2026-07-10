@@ -55,6 +55,7 @@ Definition mk_role mid pid n :=
               | Attr_double _ => Value_double None
               | Attr_decimal _ _ _ => Value_decimal None
               | Attr_date _ => Value_date None
+              | Attr_time _ => Value_time None
               | Attr_timestamp _ _ => Value_timestamp None
               | Attr_timestamptz _ _ => Value_timestamptz None
               end).
@@ -85,6 +86,7 @@ Definition mk_director mid pid :=
               | Attr_double _ => Value_double None
               | Attr_decimal _ _ _ => Value_decimal None
               | Attr_date _ => Value_date None
+              | Attr_time _ => Value_time None
               | Attr_timestamp _ _ => Value_timestamp None
               | Attr_timestamptz _ _ => Value_timestamptz None
               end).
@@ -114,6 +116,7 @@ Definition mk_movie mid t y rt rk :=
               | Attr_double _ => Value_double None
               | Attr_decimal _ _ _ => Value_decimal None
               | Attr_date _ => Value_date None
+              | Attr_time _ => Value_time None
               | Attr_timestamp _ _ => Value_timestamp None
               | Attr_timestamptz _ _ => Value_timestamptz None
               end).
@@ -142,6 +145,7 @@ Definition mk_people pid f l :=
               | Attr_double _ => Value_double None
               | Attr_decimal _ _ _ => Value_decimal None
               | Attr_date _ => Value_date None
+              | Attr_time _ => Value_time None
               | Attr_timestamp _ _ => Value_timestamp None
               | Attr_timestamptz _ _ => Value_timestamptz None
               end).

@@ -91,6 +91,19 @@ Definition valid_time h m s micros :=
              (andb (andb (z_le_bool 0 s) (z_le_bool s 59))
                    (andb (z_le_bool 0 micros) (z_le_bool micros 999999)))).
 
+Definition valid_day_time h m s micros :=
+  orb (valid_time h m s micros)
+      (andb (Z.eqb h 24)
+            (andb (Z.eqb m 0) (andb (Z.eqb s 0) (Z.eqb micros 0)))).
+
+Definition time_from_hms h minute s micros :=
+  if valid_day_time h minute s micros
+  then Some (h * micros_per_hour
+             + minute * micros_per_minute
+             + s * micros_per_second
+             + micros)
+  else None.
+
 Definition timestamp_from_ymdhms y m d h minute s micros :=
   if andb (valid_ymd y m d) (valid_time h minute s micros)
   then Some (days_from_civil y m d * micros_per_day

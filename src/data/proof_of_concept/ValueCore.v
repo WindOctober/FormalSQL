@@ -37,6 +37,7 @@ Inductive type :=
  | type_double
  | type_decimal
  | type_date
+ | type_time
  | type_timestamp
  | type_timestamptz.
 
@@ -52,8 +53,9 @@ Definition N_of_type :=
     | type_double => 4
     | type_decimal => 5
     | type_date => 6
-    | type_timestamp => 7
-    | type_timestamptz => 8
+    | type_time => 7
+    | type_timestamp => 8
+    | type_timestamptz => 9
     end.
 
 Definition OT : Oset.Rcd type.

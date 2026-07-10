@@ -44,6 +44,7 @@ Definition value_compare x y :=
     | Value_string _, Value_double _
     | Value_string _, Value_decimal _
     | Value_string _, Value_date _
+    | Value_string _, Value_time _
     | Value_string _, Value_timestamp _
     | Value_string _, Value_timestamptz _ => Lt
 
@@ -54,6 +55,7 @@ Definition value_compare x y :=
     | Value_Z _, Value_double _
     | Value_Z _, Value_decimal _
     | Value_Z _, Value_date _
+    | Value_Z _, Value_time _
     | Value_Z _, Value_timestamp _
     | Value_Z _, Value_timestamptz _ => Lt
 
@@ -64,6 +66,7 @@ Definition value_compare x y :=
     | Value_bool _, Value_double _
     | Value_bool _, Value_decimal _
     | Value_bool _, Value_date _
+    | Value_bool _, Value_time _
     | Value_bool _, Value_timestamp _
     | Value_bool _, Value_timestamptz _ => Lt
 
@@ -74,6 +77,7 @@ Definition value_compare x y :=
     | Value_float _, Value_double _
     | Value_float _, Value_decimal _
     | Value_float _, Value_date _
+    | Value_float _, Value_time _
     | Value_float _, Value_timestamp _
     | Value_float _, Value_timestamptz _ => Lt
 
@@ -84,6 +88,7 @@ Definition value_compare x y :=
     | Value_double f1, Value_double f2 => option_compare _ (Oset.compare Ofloat64) f1 f2
     | Value_double _, Value_decimal _
     | Value_double _, Value_date _
+    | Value_double _, Value_time _
     | Value_double _, Value_timestamp _
     | Value_double _, Value_timestamptz _ => Lt
 
@@ -94,6 +99,7 @@ Definition value_compare x y :=
     | Value_decimal _, Value_double _ => Gt
     | Value_decimal d1, Value_decimal d2 => option_compare _ (Oset.compare Odecimal) d1 d2
     | Value_decimal _, Value_date _
+    | Value_decimal _, Value_time _
     | Value_decimal _, Value_timestamp _
     | Value_decimal _, Value_timestamptz _ => Lt
 
@@ -104,8 +110,20 @@ Definition value_compare x y :=
     | Value_date _, Value_double _
     | Value_date _, Value_decimal _ => Gt
     | Value_date d1, Value_date d2 => option_compare _ Z.compare d1 d2
+    | Value_date _, Value_time _
     | Value_date _, Value_timestamp _
     | Value_date _, Value_timestamptz _ => Lt
+
+    | Value_time _, Value_string _
+    | Value_time _, Value_Z _
+    | Value_time _, Value_bool _
+    | Value_time _, Value_float _
+    | Value_time _, Value_double _
+    | Value_time _, Value_decimal _
+    | Value_time _, Value_date _ => Gt
+    | Value_time t1, Value_time t2 => option_compare _ Z.compare t1 t2
+    | Value_time _, Value_timestamp _
+    | Value_time _, Value_timestamptz _ => Lt
 
     | Value_timestamp _, Value_string _
     | Value_timestamp _, Value_Z _
@@ -113,7 +131,8 @@ Definition value_compare x y :=
     | Value_timestamp _, Value_float _
     | Value_timestamp _, Value_double _
     | Value_timestamp _, Value_decimal _
-    | Value_timestamp _, Value_date _ => Gt
+    | Value_timestamp _, Value_date _
+    | Value_timestamp _, Value_time _ => Gt
     | Value_timestamp t1, Value_timestamp t2 => option_compare _ Z.compare t1 t2
     | Value_timestamp _, Value_timestamptz _ => Lt
 
@@ -124,6 +143,7 @@ Definition value_compare x y :=
     | Value_timestamptz _, Value_double _
     | Value_timestamptz _, Value_decimal _
     | Value_timestamptz _, Value_date _
+    | Value_timestamptz _, Value_time _
     | Value_timestamptz _, Value_timestamp _ => Gt
     | Value_timestamptz t1, Value_timestamptz t2 => option_compare _ Z.compare t1 t2
   end.
@@ -131,8 +151,8 @@ Definition value_compare x y :=
 Definition OVal : Oset.Rcd value.
 split with value_compare.
 - (* 1/3 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [dbl1 | ] | [dec1 | ] | [d1 | ] | [t1 | ] | [tz1 | ]]
-         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [dbl2 | ] | [dec2 | ] | [d2 | ] | [t2 | ] | [tz2 | ]];
+  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [dbl1 | ] | [dec1 | ] | [d1 | ] | [tm1 | ] | [t1 | ] | [tz1 | ]]
+         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [dbl2 | ] | [dec2 | ] | [d2 | ] | [tm2 | ] | [t2 | ] | [tz2 | ]];
     try discriminate; simpl; trivial.
   + generalize (Oset.eq_bool_ok Ostring s1 s2); simpl; case (string_compare s1 s2).
     * apply (f_equal (fun x => Value_string (Some x))).
@@ -182,6 +202,10 @@ split with value_compare.
     * apply (f_equal (fun x => Value_date (Some x))).
     * intros H1 H2; injection H2; apply H1.
     * intros H1 H2; injection H2; apply H1.
+  + generalize (Oset.eq_bool_ok OZ tm1 tm2); simpl; case (Z.compare tm1 tm2).
+    * apply (f_equal (fun x => Value_time (Some x))).
+    * intros H1 H2; injection H2; apply H1.
+    * intros H1 H2; injection H2; apply H1.
   + generalize (Oset.eq_bool_ok OZ t1 t2); simpl; case (Z.compare t1 t2).
     * apply (f_equal (fun x => Value_timestamp (Some x))).
     * intros H1 H2; injection H2; apply H1.
@@ -191,9 +215,9 @@ split with value_compare.
     * intros H1 H2; injection H2; apply H1.
     * intros H1 H2; injection H2; apply H1.
 - (* 1/2 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [dbl1 | ] | [dec1 | ] | [d1 | ] | [t1 | ] | [tz1 | ]]
-         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [dbl2 | ] | [dec2 | ] | [d2 | ] | [t2 | ] | [tz2 | ]]
-         [[s3 | ] | [z3 | ] | [b3 | ] | [f3 | ] | [dbl3 | ] | [dec3 | ] | [d3 | ] | [t3 | ] | [tz3 | ]]; trivial; try discriminate; simpl.
+  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [dbl1 | ] | [dec1 | ] | [d1 | ] | [tm1 | ] | [t1 | ] | [tz1 | ]]
+         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [dbl2 | ] | [dec2 | ] | [d2 | ] | [tm2 | ] | [t2 | ] | [tz2 | ]]
+         [[s3 | ] | [z3 | ] | [b3 | ] | [f3 | ] | [dbl3 | ] | [dec3 | ] | [d3 | ] | [tm3 | ] | [t3 | ] | [tz3 | ]]; trivial; try discriminate; simpl.
   + apply (Oset.compare_lt_trans Ostring).
   + apply (Oset.compare_lt_trans OZ).
   + apply (Oset.compare_lt_trans Obool).
@@ -203,15 +227,17 @@ split with value_compare.
   + apply (Oset.compare_lt_trans OZ).
   + apply (Oset.compare_lt_trans OZ).
   + apply (Oset.compare_lt_trans OZ).
+  + apply (Oset.compare_lt_trans OZ).
 - (* 1/1 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [dbl1 | ] | [dec1 | ] | [d1 | ] | [t1 | ] | [tz1 | ]]
-         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [dbl2 | ] | [dec2 | ] | [d2 | ] | [t2 | ] | [tz2 | ]]; trivial; simpl.
+  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [dbl1 | ] | [dec1 | ] | [d1 | ] | [tm1 | ] | [t1 | ] | [tz1 | ]]
+         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [dbl2 | ] | [dec2 | ] | [d2 | ] | [tm2 | ] | [t2 | ] | [tz2 | ]]; trivial; simpl.
   + apply (Oset.compare_lt_gt Ostring).
   + apply (Oset.compare_lt_gt OZ).
   + apply (Oset.compare_lt_gt Obool).
   + apply (Oset.compare_lt_gt Ofloat32).
   + apply (Oset.compare_lt_gt Ofloat64).
   + apply (Oset.compare_lt_gt Odecimal).
+  + apply (Oset.compare_lt_gt OZ).
   + apply (Oset.compare_lt_gt OZ).
   + apply (Oset.compare_lt_gt OZ).
   + apply (Oset.compare_lt_gt OZ).

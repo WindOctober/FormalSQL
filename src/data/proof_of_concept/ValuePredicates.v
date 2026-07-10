@@ -28,6 +28,7 @@ Definition interp_predicate p :=
             match v1, v2 with
               | Value_Z (Some a1), Value_Z (Some a2)
               | Value_date (Some a1), Value_date (Some a2)
+              | Value_time (Some a1), Value_time (Some a2)
               | Value_timestamp (Some a1), Value_timestamp (Some a2)
               | Value_timestamptz (Some a1), Value_timestamptz (Some a2) =>
                 match Z.compare a1 a2 with Lt => true3 | _ => false3 end
@@ -58,6 +59,7 @@ Definition interp_predicate p :=
             match v1, v2 with
               | Value_Z (Some a1), Value_Z (Some a2)
               | Value_date (Some a1), Value_date (Some a2)
+              | Value_time (Some a1), Value_time (Some a2)
               | Value_timestamp (Some a1), Value_timestamp (Some a2)
               | Value_timestamptz (Some a1), Value_timestamptz (Some a2) =>
                 match Z.compare a1 a2 with Gt => false3 | _ => true3 end
@@ -88,6 +90,7 @@ Definition interp_predicate p :=
             match v1, v2 with
               | Value_Z (Some a1), Value_Z (Some a2)
               | Value_date (Some a1), Value_date (Some a2)
+              | Value_time (Some a1), Value_time (Some a2)
               | Value_timestamp (Some a1), Value_timestamp (Some a2)
               | Value_timestamptz (Some a1), Value_timestamptz (Some a2) =>
                 match Z.compare a1 a2 with Gt => true3 | _ => false3 end
@@ -118,6 +121,7 @@ Definition interp_predicate p :=
             match v1, v2 with
               | Value_Z (Some a1), Value_Z (Some a2)
               | Value_date (Some a1), Value_date (Some a2)
+              | Value_time (Some a1), Value_time (Some a2)
               | Value_timestamp (Some a1), Value_timestamp (Some a2)
               | Value_timestamptz (Some a1), Value_timestamptz (Some a2) =>
                 match Z.compare a1 a2 with Lt => false3 | _ => true3 end
@@ -148,6 +152,7 @@ Definition interp_predicate p :=
             match v1, v2 with
               | Value_Z (Some a1), Value_Z (Some a2)
               | Value_date (Some a1), Value_date (Some a2)
+              | Value_time (Some a1), Value_time (Some a2)
               | Value_timestamp (Some a1), Value_timestamp (Some a2)
               | Value_timestamptz (Some a1), Value_timestamptz (Some a2) =>
                 match Z.compare a1 a2 with Eq => true3 | _ => false3 end
@@ -170,6 +175,7 @@ Definition interp_predicate p :=
             match v1, v2 with
               | Value_Z (Some a1), Value_Z (Some a2)
               | Value_date (Some a1), Value_date (Some a2)
+              | Value_time (Some a1), Value_time (Some a2)
               | Value_timestamp (Some a1), Value_timestamp (Some a2)
               | Value_timestamptz (Some a1), Value_timestamptz (Some a2) =>
                 match Z.compare a1 a2 with Eq => false3 | _ => true3 end

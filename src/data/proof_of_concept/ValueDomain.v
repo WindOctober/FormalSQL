@@ -28,6 +28,7 @@ Inductive value : Set :=
   | Value_double : option float64 -> value
   | Value_decimal : option decimal -> value
   | Value_date : option Z -> value
+  | Value_time : option Z -> value
   | Value_timestamp : option Z -> value
   | Value_timestamptz : option Z -> value.
 
@@ -39,6 +40,7 @@ Register Value_float as datacert.value.Value_float.
 Register Value_double as datacert.value.Value_double.
 Register Value_decimal as datacert.value.Value_decimal.
 Register Value_date as datacert.value.Value_date.
+Register Value_time as datacert.value.Value_time.
 Register Value_timestamp as datacert.value.Value_timestamp.
 Register Value_timestamptz as datacert.value.Value_timestamptz.
 
@@ -53,6 +55,7 @@ match v with
   | Value_double _ => type_double
   | Value_decimal _ => type_decimal
   | Value_date _ => type_date
+  | Value_time _ => type_time
   | Value_timestamp _ => type_timestamp
   | Value_timestamptz _ => type_timestamptz
   end.
@@ -67,6 +70,7 @@ Definition default_value d :=
     | type_double => Value_double None
     | type_decimal => Value_decimal None
     | type_date => Value_date None
+    | type_time => Value_time None
     | type_timestamp => Value_timestamp None
     | type_timestamptz => Value_timestamptz None
   end.
@@ -80,6 +84,7 @@ Definition is_null_value v :=
   | Value_double None
   | Value_decimal None
   | Value_date None
+  | Value_time None
   | Value_timestamp None
   | Value_timestamptz None => true
   | _ => false
@@ -101,6 +106,8 @@ Definition same_non_null_value v1 v2 :=
       Bool.eqb b1 b2
   | Value_date (Some d1), Value_date (Some d2) =>
       match Z.compare d1 d2 with Eq => true | _ => false end
+  | Value_time (Some t1), Value_time (Some t2) =>
+      match Z.compare t1 t2 with Eq => true | _ => false end
   | Value_timestamp (Some t1), Value_timestamp (Some t2) =>
       match Z.compare t1 t2 with Eq => true | _ => false end
   | Value_timestamptz (Some t1), Value_timestamptz (Some t2) =>
