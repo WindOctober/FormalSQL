@@ -50,10 +50,12 @@ Definition mk_role mid pid n :=
               | name => Value_string (Some n)
               | Attr_string _ => Value_string None
               | Attr_Z _ => Value_Z None
+              | Attr_int32 _ => Value_int32 None
+              | Attr_int64 _ => Value_int64 None
               | Attr_bool _ => Value_bool None
               | Attr_float _ => Value_float None
               | Attr_double _ => Value_double None
-              | Attr_decimal _ _ _ => Value_decimal None
+              | Attr_numeric _ | Attr_decimal _ _ _ => Value_numeric None
               | Attr_date _ => Value_date None
               | Attr_time _ => Value_time None
               | Attr_timestamp _ _ => Value_timestamp None
@@ -81,10 +83,12 @@ Definition mk_director mid pid :=
               | d_pid => Value_Z (Some pid)
               | Attr_string _ => Value_string None
               | Attr_Z _ => Value_Z None
+              | Attr_int32 _ => Value_int32 None
+              | Attr_int64 _ => Value_int64 None
               | Attr_bool _ => Value_bool None
               | Attr_float _ => Value_float None
               | Attr_double _ => Value_double None
-              | Attr_decimal _ _ _ => Value_decimal None
+              | Attr_numeric _ | Attr_decimal _ _ _ => Value_numeric None
               | Attr_date _ => Value_date None
               | Attr_time _ => Value_time None
               | Attr_timestamp _ _ => Value_timestamp None
@@ -111,10 +115,12 @@ Definition mk_movie mid t y rt rk :=
               | rank => Value_Z (Some rk)
               | Attr_string _ => Value_string None
               | Attr_Z _ => Value_Z None
+              | Attr_int32 _ => Value_int32 None
+              | Attr_int64 _ => Value_int64 None
               | Attr_bool _ => Value_bool None
               | Attr_float _ => Value_float None
               | Attr_double _ => Value_double None
-              | Attr_decimal _ _ _ => Value_decimal None
+              | Attr_numeric _ | Attr_decimal _ _ _ => Value_numeric None
               | Attr_date _ => Value_date None
               | Attr_time _ => Value_time None
               | Attr_timestamp _ _ => Value_timestamp None
@@ -140,10 +146,12 @@ Definition mk_people pid f l :=
               | lastname => Value_string (Some l)
               | Attr_string _ => Value_string None
               | Attr_Z _ => Value_Z None
+              | Attr_int32 _ => Value_int32 None
+              | Attr_int64 _ => Value_int64 None
               | Attr_bool _ => Value_bool None
               | Attr_float _ => Value_float None
               | Attr_double _ => Value_double None
-              | Attr_decimal _ _ _ => Value_decimal None
+              | Attr_numeric _ | Attr_decimal _ _ _ => Value_numeric None
               | Attr_date _ => Value_date None
               | Attr_time _ => Value_time None
               | Attr_timestamp _ _ => Value_timestamp None
@@ -198,5 +206,3 @@ Abort.
 *)
 
 (* Eval compute in (eval_sql_query_in_state db_movie query0). *)
-
-

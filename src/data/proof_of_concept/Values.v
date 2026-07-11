@@ -39,10 +39,12 @@ Definition value_compare x y :=
   match x, y with
     | Value_string s1, Value_string s2 => option_compare _ string_compare s1 s2
     | Value_string _, Value_Z _
+    | Value_string _, Value_int32 _
+    | Value_string _, Value_int64 _
     | Value_string _, Value_bool _
     | Value_string _, Value_float _
     | Value_string _, Value_double _
-    | Value_string _, Value_decimal _
+    | Value_string _, Value_numeric _
     | Value_string _, Value_date _
     | Value_string _, Value_time _
     | Value_string _, Value_timestamp _
@@ -50,21 +52,51 @@ Definition value_compare x y :=
 
     | Value_Z _, Value_string _ => Gt
     | Value_Z z1, Value_Z z2 => option_compare _ Z.compare z1 z2
+    | Value_Z _, Value_int32 _
+    | Value_Z _, Value_int64 _
     | Value_Z _, Value_bool _
     | Value_Z _, Value_float _
     | Value_Z _, Value_double _
-    | Value_Z _, Value_decimal _
+    | Value_Z _, Value_numeric _
     | Value_Z _, Value_date _
     | Value_Z _, Value_time _
     | Value_Z _, Value_timestamp _
     | Value_Z _, Value_timestamptz _ => Lt
 
+    | Value_int32 _, Value_string _
+    | Value_int32 _, Value_Z _ => Gt
+    | Value_int32 i1, Value_int32 i2 => option_compare _ (Oset.compare Oint32) i1 i2
+    | Value_int32 _, Value_int64 _
+    | Value_int32 _, Value_bool _
+    | Value_int32 _, Value_float _
+    | Value_int32 _, Value_double _
+    | Value_int32 _, Value_numeric _
+    | Value_int32 _, Value_date _
+    | Value_int32 _, Value_time _
+    | Value_int32 _, Value_timestamp _
+    | Value_int32 _, Value_timestamptz _ => Lt
+
+    | Value_int64 _, Value_string _
+    | Value_int64 _, Value_Z _
+    | Value_int64 _, Value_int32 _ => Gt
+    | Value_int64 i1, Value_int64 i2 => option_compare _ (Oset.compare Oint64) i1 i2
+    | Value_int64 _, Value_bool _
+    | Value_int64 _, Value_float _
+    | Value_int64 _, Value_double _
+    | Value_int64 _, Value_numeric _
+    | Value_int64 _, Value_date _
+    | Value_int64 _, Value_time _
+    | Value_int64 _, Value_timestamp _
+    | Value_int64 _, Value_timestamptz _ => Lt
+
     | Value_bool _, Value_string _
-    | Value_bool _, Value_Z _ => Gt
+    | Value_bool _, Value_Z _
+    | Value_bool _, Value_int32 _
+    | Value_bool _, Value_int64 _ => Gt
     | Value_bool b1, Value_bool b2 => option_compare _ bool_compare b1 b2
     | Value_bool _, Value_float _
     | Value_bool _, Value_double _
-    | Value_bool _, Value_decimal _
+    | Value_bool _, Value_numeric _
     | Value_bool _, Value_date _
     | Value_bool _, Value_time _
     | Value_bool _, Value_timestamp _
@@ -72,10 +104,12 @@ Definition value_compare x y :=
 
     | Value_float _, Value_string _
     | Value_float _, Value_Z _
+    | Value_float _, Value_int32 _
+    | Value_float _, Value_int64 _
     | Value_float _, Value_bool _ => Gt
     | Value_float f1, Value_float f2 => option_compare _ (Oset.compare Ofloat32) f1 f2
     | Value_float _, Value_double _
-    | Value_float _, Value_decimal _
+    | Value_float _, Value_numeric _
     | Value_float _, Value_date _
     | Value_float _, Value_time _
     | Value_float _, Value_timestamp _
@@ -83,32 +117,38 @@ Definition value_compare x y :=
 
     | Value_double _, Value_string _
     | Value_double _, Value_Z _
+    | Value_double _, Value_int32 _
+    | Value_double _, Value_int64 _
     | Value_double _, Value_bool _
     | Value_double _, Value_float _ => Gt
     | Value_double f1, Value_double f2 => option_compare _ (Oset.compare Ofloat64) f1 f2
-    | Value_double _, Value_decimal _
+    | Value_double _, Value_numeric _
     | Value_double _, Value_date _
     | Value_double _, Value_time _
     | Value_double _, Value_timestamp _
     | Value_double _, Value_timestamptz _ => Lt
 
-    | Value_decimal _, Value_string _
-    | Value_decimal _, Value_Z _
-    | Value_decimal _, Value_bool _
-    | Value_decimal _, Value_float _
-    | Value_decimal _, Value_double _ => Gt
-    | Value_decimal d1, Value_decimal d2 => option_compare _ (Oset.compare Odecimal) d1 d2
-    | Value_decimal _, Value_date _
-    | Value_decimal _, Value_time _
-    | Value_decimal _, Value_timestamp _
-    | Value_decimal _, Value_timestamptz _ => Lt
+    | Value_numeric _, Value_string _
+    | Value_numeric _, Value_Z _
+    | Value_numeric _, Value_int32 _
+    | Value_numeric _, Value_int64 _
+    | Value_numeric _, Value_bool _
+    | Value_numeric _, Value_float _
+    | Value_numeric _, Value_double _ => Gt
+    | Value_numeric d1, Value_numeric d2 => option_compare _ (Oset.compare Onumeric) d1 d2
+    | Value_numeric _, Value_date _
+    | Value_numeric _, Value_time _
+    | Value_numeric _, Value_timestamp _
+    | Value_numeric _, Value_timestamptz _ => Lt
 
     | Value_date _, Value_string _
     | Value_date _, Value_Z _
+    | Value_date _, Value_int32 _
+    | Value_date _, Value_int64 _
     | Value_date _, Value_bool _
     | Value_date _, Value_float _
     | Value_date _, Value_double _
-    | Value_date _, Value_decimal _ => Gt
+    | Value_date _, Value_numeric _ => Gt
     | Value_date d1, Value_date d2 => option_compare _ Z.compare d1 d2
     | Value_date _, Value_time _
     | Value_date _, Value_timestamp _
@@ -116,10 +156,12 @@ Definition value_compare x y :=
 
     | Value_time _, Value_string _
     | Value_time _, Value_Z _
+    | Value_time _, Value_int32 _
+    | Value_time _, Value_int64 _
     | Value_time _, Value_bool _
     | Value_time _, Value_float _
     | Value_time _, Value_double _
-    | Value_time _, Value_decimal _
+    | Value_time _, Value_numeric _
     | Value_time _, Value_date _ => Gt
     | Value_time t1, Value_time t2 => option_compare _ Z.compare t1 t2
     | Value_time _, Value_timestamp _
@@ -127,10 +169,12 @@ Definition value_compare x y :=
 
     | Value_timestamp _, Value_string _
     | Value_timestamp _, Value_Z _
+    | Value_timestamp _, Value_int32 _
+    | Value_timestamp _, Value_int64 _
     | Value_timestamp _, Value_bool _
     | Value_timestamp _, Value_float _
     | Value_timestamp _, Value_double _
-    | Value_timestamp _, Value_decimal _
+    | Value_timestamp _, Value_numeric _
     | Value_timestamp _, Value_date _
     | Value_timestamp _, Value_time _ => Gt
     | Value_timestamp t1, Value_timestamp t2 => option_compare _ Z.compare t1 t2
@@ -138,10 +182,12 @@ Definition value_compare x y :=
 
     | Value_timestamptz _, Value_string _
     | Value_timestamptz _, Value_Z _
+    | Value_timestamptz _, Value_int32 _
+    | Value_timestamptz _, Value_int64 _
     | Value_timestamptz _, Value_bool _
     | Value_timestamptz _, Value_float _
     | Value_timestamptz _, Value_double _
-    | Value_timestamptz _, Value_decimal _
+    | Value_timestamptz _, Value_numeric _
     | Value_timestamptz _, Value_date _
     | Value_timestamptz _, Value_time _
     | Value_timestamptz _, Value_timestamp _ => Gt
@@ -151,8 +197,8 @@ Definition value_compare x y :=
 Definition OVal : Oset.Rcd value.
 split with value_compare.
 - (* 1/3 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [dbl1 | ] | [dec1 | ] | [d1 | ] | [tm1 | ] | [t1 | ] | [tz1 | ]]
-         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [dbl2 | ] | [dec2 | ] | [d2 | ] | [tm2 | ] | [t2 | ] | [tz2 | ]];
+  intros [[s1 | ] | [z1 | ] | [i321 | ] | [i641 | ] | [b1 | ] | [f1 | ] | [dbl1 | ] | [dec1 | ] | [d1 | ] | [tm1 | ] | [t1 | ] | [tz1 | ]]
+         [[s2 | ] | [z2 | ] | [i322 | ] | [i642 | ] | [b2 | ] | [f2 | ] | [dbl2 | ] | [dec2 | ] | [d2 | ] | [tm2 | ] | [t2 | ] | [tz2 | ]];
     try discriminate; simpl; trivial.
   + generalize (Oset.eq_bool_ok Ostring s1 s2); simpl; case (string_compare s1 s2).
     * apply (f_equal (fun x => Value_string (Some x))).
@@ -162,6 +208,16 @@ split with value_compare.
     * apply (f_equal (fun x => Value_Z (Some x))).
     * intros H1 H2; injection H2; apply H1.
     * intros H1 H2; injection H2; apply H1.
+  + generalize (Oset.eq_bool_ok Oint32 i321 i322); simpl.
+    case_eq (int32_compare i321 i322); intro Hint.
+    * intro H; apply (f_equal (fun x => Value_int32 (Some x))); apply H; reflexivity.
+    * intros Hneq H; injection H; intro Heq; apply Hneq; exact Heq.
+    * intros Hneq H; injection H; intro Heq; apply Hneq; exact Heq.
+  + generalize (Oset.eq_bool_ok Oint64 i641 i642); simpl.
+    case_eq (int64_compare i641 i642); intro Hint.
+    * intro H; apply (f_equal (fun x => Value_int64 (Some x))); apply H; reflexivity.
+    * intros Hneq H; injection H; intro Heq; apply Hneq; exact Heq.
+    * intros Hneq H; injection H; intro Heq; apply Hneq; exact Heq.
   + generalize (Oset.eq_bool_ok Obool b1 b2); simpl; case (bool_compare b1 b2).
     * apply (f_equal (fun x => Value_bool (Some x))).
     * intros H1 H2; injection H2; apply H1.
@@ -176,24 +232,24 @@ split with value_compare.
     * apply (f_equal (fun x => Value_double (Some x))).
     * intros H1 H2; injection H2; apply H1.
     * intros H1 H2; injection H2; apply H1.
-  + case_eq (Oset.compare Odecimal dec1 dec2); intro Hdec.
-    * change (match Oset.compare Odecimal dec1 dec2 with
-              | Eq => Value_decimal (Some dec1) = Value_decimal (Some dec2)
-              | _ => Value_decimal (Some dec1) <> Value_decimal (Some dec2)
+  + case_eq (Oset.compare Onumeric dec1 dec2); intro Hdec.
+    * change (match Oset.compare Onumeric dec1 dec2 with
+              | Eq => Value_numeric (Some dec1) = Value_numeric (Some dec2)
+              | _ => Value_numeric (Some dec1) <> Value_numeric (Some dec2)
               end).
       rewrite Hdec.
-      apply (f_equal (fun x => Value_decimal (Some x))).
-      apply (proj1 (Oset.compare_eq_iff Odecimal dec1 dec2)); assumption.
-    * change (match Oset.compare Odecimal dec1 dec2 with
-              | Eq => Value_decimal (Some dec1) = Value_decimal (Some dec2)
-              | _ => Value_decimal (Some dec1) <> Value_decimal (Some dec2)
+      apply (f_equal (fun x => Value_numeric (Some x))).
+      apply (proj1 (Oset.compare_eq_iff Onumeric dec1 dec2)); assumption.
+    * change (match Oset.compare Onumeric dec1 dec2 with
+              | Eq => Value_numeric (Some dec1) = Value_numeric (Some dec2)
+              | _ => Value_numeric (Some dec1) <> Value_numeric (Some dec2)
               end).
       rewrite Hdec.
       intro H; inversion H; subst.
       rewrite Oset.compare_eq_refl in Hdec; discriminate.
-    * change (match Oset.compare Odecimal dec1 dec2 with
-              | Eq => Value_decimal (Some dec1) = Value_decimal (Some dec2)
-              | _ => Value_decimal (Some dec1) <> Value_decimal (Some dec2)
+    * change (match Oset.compare Onumeric dec1 dec2 with
+              | Eq => Value_numeric (Some dec1) = Value_numeric (Some dec2)
+              | _ => Value_numeric (Some dec1) <> Value_numeric (Some dec2)
               end).
       rewrite Hdec.
       intro H; inversion H; subst.
@@ -215,28 +271,32 @@ split with value_compare.
     * intros H1 H2; injection H2; apply H1.
     * intros H1 H2; injection H2; apply H1.
 - (* 1/2 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [dbl1 | ] | [dec1 | ] | [d1 | ] | [tm1 | ] | [t1 | ] | [tz1 | ]]
-         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [dbl2 | ] | [dec2 | ] | [d2 | ] | [tm2 | ] | [t2 | ] | [tz2 | ]]
-         [[s3 | ] | [z3 | ] | [b3 | ] | [f3 | ] | [dbl3 | ] | [dec3 | ] | [d3 | ] | [tm3 | ] | [t3 | ] | [tz3 | ]]; trivial; try discriminate; simpl.
+  intros [[s1 | ] | [z1 | ] | [i321 | ] | [i641 | ] | [b1 | ] | [f1 | ] | [dbl1 | ] | [dec1 | ] | [d1 | ] | [tm1 | ] | [t1 | ] | [tz1 | ]]
+         [[s2 | ] | [z2 | ] | [i322 | ] | [i642 | ] | [b2 | ] | [f2 | ] | [dbl2 | ] | [dec2 | ] | [d2 | ] | [tm2 | ] | [t2 | ] | [tz2 | ]]
+         [[s3 | ] | [z3 | ] | [i323 | ] | [i643 | ] | [b3 | ] | [f3 | ] | [dbl3 | ] | [dec3 | ] | [d3 | ] | [tm3 | ] | [t3 | ] | [tz3 | ]]; trivial; try discriminate; simpl.
   + apply (Oset.compare_lt_trans Ostring).
   + apply (Oset.compare_lt_trans OZ).
+  + apply (Oset.compare_lt_trans Oint32).
+  + apply (Oset.compare_lt_trans Oint64).
   + apply (Oset.compare_lt_trans Obool).
   + apply (Oset.compare_lt_trans Ofloat32).
   + apply (Oset.compare_lt_trans Ofloat64).
-  + apply (Oset.compare_lt_trans Odecimal).
+  + apply (Oset.compare_lt_trans Onumeric).
   + apply (Oset.compare_lt_trans OZ).
   + apply (Oset.compare_lt_trans OZ).
   + apply (Oset.compare_lt_trans OZ).
   + apply (Oset.compare_lt_trans OZ).
 - (* 1/1 *)
-  intros [[s1 | ] | [z1 | ] | [b1 | ] | [f1 | ] | [dbl1 | ] | [dec1 | ] | [d1 | ] | [tm1 | ] | [t1 | ] | [tz1 | ]]
-         [[s2 | ] | [z2 | ] | [b2 | ] | [f2 | ] | [dbl2 | ] | [dec2 | ] | [d2 | ] | [tm2 | ] | [t2 | ] | [tz2 | ]]; trivial; simpl.
+  intros [[s1 | ] | [z1 | ] | [i321 | ] | [i641 | ] | [b1 | ] | [f1 | ] | [dbl1 | ] | [dec1 | ] | [d1 | ] | [tm1 | ] | [t1 | ] | [tz1 | ]]
+         [[s2 | ] | [z2 | ] | [i322 | ] | [i642 | ] | [b2 | ] | [f2 | ] | [dbl2 | ] | [dec2 | ] | [d2 | ] | [tm2 | ] | [t2 | ] | [tz2 | ]]; trivial; simpl.
   + apply (Oset.compare_lt_gt Ostring).
   + apply (Oset.compare_lt_gt OZ).
+  + apply (Oset.compare_lt_gt Oint32).
+  + apply (Oset.compare_lt_gt Oint64).
   + apply (Oset.compare_lt_gt Obool).
   + apply (Oset.compare_lt_gt Ofloat32).
   + apply (Oset.compare_lt_gt Ofloat64).
-  + apply (Oset.compare_lt_gt Odecimal).
+  + apply (Oset.compare_lt_gt Onumeric).
   + apply (Oset.compare_lt_gt OZ).
   + apply (Oset.compare_lt_gt OZ).
   + apply (Oset.compare_lt_gt OZ).
@@ -252,6 +312,18 @@ Definition is_z_value v :=
   | _ => false
   end.
 
+Definition is_int32_value v :=
+  match v with
+  | Value_int32 _ => true
+  | _ => false
+  end.
+
+Definition is_int64_value v :=
+  match v with
+  | Value_int64 _ => true
+  | _ => false
+  end.
+
 Definition is_float_value v :=
   match v with
   | Value_float _ => true
@@ -264,9 +336,9 @@ Definition is_double_value v :=
   | _ => false
   end.
 
-Definition is_decimal_value v :=
+Definition is_numeric_value v :=
   match v with
-  | Value_decimal _ => true
+  | Value_numeric _ => true
   | _ => false
   end.
 
@@ -274,6 +346,20 @@ Fixpoint z_values l :=
   match l with
   | Value_Z (Some z) :: tl => z :: z_values tl
   | _ :: tl => z_values tl
+  | nil => nil
+  end.
+
+Fixpoint int32_values l :=
+  match l with
+  | Value_int32 (Some z) :: tl => z :: int32_values tl
+  | _ :: tl => int32_values tl
+  | nil => nil
+  end.
+
+Fixpoint int64_values l :=
+  match l with
+  | Value_int64 (Some z) :: tl => z :: int64_values tl
+  | _ :: tl => int64_values tl
   | nil => nil
   end.
 
@@ -291,22 +377,11 @@ Fixpoint double_values l :=
   | nil => nil
   end.
 
-Fixpoint decimal_values l :=
+Fixpoint numeric_values l :=
   match l with
-  | Value_decimal (Some d) :: tl => d :: decimal_values tl
-  | _ :: tl => decimal_values tl
+  | Value_numeric (Some d) :: tl => d :: numeric_values tl
+  | _ :: tl => numeric_values tl
   | nil => nil
-  end.
-
-Fixpoint decimal_fold_option (f : decimal -> decimal -> option decimal) (acc : decimal)
-    (values : list decimal) : option decimal :=
-  match values with
-  | nil => Some acc
-  | d :: tl =>
-      match f acc d with
-      | Some acc' => decimal_fold_option f acc' tl
-      | None => None
-      end
   end.
 
 Definition non_null_count l :=
@@ -315,6 +390,20 @@ Definition non_null_count l :=
 Definition row_count (l : list value) :=
   Z_of_nat (List.length l).
 
+Definition value_int64_checked z :=
+  match int64_checked z with
+  | Some value => Value_int64 (Some value)
+  | None => Value_int64 None
+  end.
+
+Definition integral_value_as_z v :=
+  match v with
+  | Value_Z (Some z) => Some z
+  | Value_int32 (Some z) => Some (int32_value z)
+  | Value_int64 (Some z) => Some (int64_value z)
+  | _ => None
+  end.
+
 Definition interp_sum_z l :=
   if forallb is_z_value l then
     match z_values l with
@@ -322,6 +411,57 @@ Definition interp_sum_z l :=
     | values => Value_Z (Some (fold_left Z.add values 0%Z))
     end
   else Value_Z None.
+
+Definition interp_sum_int32_as_int64 l :=
+  if forallb is_int32_value l then
+    match int32_values l with
+    | nil => Value_int64 None
+    | values =>
+        value_int64_checked
+          (fold_left (fun acc next => acc + int32_value next) values 0%Z)
+    end
+  else Value_int64 None.
+
+Definition interp_sum_int64_as_numeric l :=
+  if forallb is_int64_value l then
+    match int64_values l with
+    | nil => Value_numeric None
+    | values =>
+        Value_numeric (Some (fold_left
+          (fun acc next => numeric_add acc (numeric_of_Z (int64_value next)))
+          values numeric_zero))
+    end
+  else Value_numeric None.
+
+Definition interp_avg_int32_as_numeric l :=
+  if forallb is_int32_value l then
+    match int32_values l with
+    | nil => Value_numeric None
+    | values =>
+        let sum := fold_left
+          (fun acc next => numeric_add acc (numeric_of_Z (int32_value next)))
+          values numeric_zero in
+        match numeric_div_by_Z sum (Z.of_nat (List.length values)) with
+        | Some avg => Value_numeric (Some avg)
+        | None => Value_numeric None
+        end
+    end
+  else Value_numeric None.
+
+Definition interp_avg_int64_as_numeric l :=
+  if forallb is_int64_value l then
+    match int64_values l with
+    | nil => Value_numeric None
+    | values =>
+        let sum := fold_left
+          (fun acc next => numeric_add acc (numeric_of_Z (int64_value next)))
+          values numeric_zero in
+        match numeric_div_by_Z sum (Z.of_nat (List.length values)) with
+        | Some avg => Value_numeric (Some avg)
+        | None => Value_numeric None
+        end
+    end
+  else Value_numeric None.
 
 Definition interp_sum_float l :=
   if forallb is_float_value l then
@@ -339,17 +479,13 @@ Definition interp_sum_double l :=
     end
   else Value_double None.
 
-Definition interp_sum_decimal l :=
-  if forallb is_decimal_value l then
-    match decimal_values l with
-    | nil => Value_decimal None
-    | values =>
-        match decimal_fold_option decimal_add decimal_zero values with
-        | Some sum => Value_decimal (Some sum)
-        | None => Value_decimal None
-        end
+Definition interp_sum_numeric l :=
+  if forallb is_numeric_value l then
+    match numeric_values l with
+    | nil => Value_numeric None
+    | values => Value_numeric (Some (numeric_sum values))
     end
-  else Value_decimal None.
+  else Value_numeric None.
 
 Definition interp_max_z l :=
   if forallb is_z_value l then
@@ -358,6 +494,30 @@ Definition interp_max_z l :=
     | z :: values => Value_Z (Some (fold_left Z.max values z))
     end
   else Value_Z None.
+
+Definition interp_max_int32 l :=
+  if forallb is_int32_value l then
+    match int32_values l with
+    | nil => Value_int32 None
+    | z :: values =>
+        Value_int32 (Some (fold_left
+          (fun acc next =>
+             match int32_compare acc next with Lt => next | _ => acc end)
+          values z))
+    end
+  else Value_int32 None.
+
+Definition interp_max_int64 l :=
+  if forallb is_int64_value l then
+    match int64_values l with
+    | nil => Value_int64 None
+    | z :: values =>
+        Value_int64 (Some (fold_left
+          (fun acc next =>
+             match int64_compare acc next with Lt => next | _ => acc end)
+          values z))
+    end
+  else Value_int64 None.
 
 Definition interp_max_float l :=
   if forallb is_float_value l then
@@ -375,13 +535,13 @@ Definition interp_max_double l :=
     end
   else Value_double None.
 
-Definition interp_max_decimal l :=
-  if forallb is_decimal_value l then
-    match decimal_values l with
-    | nil => Value_decimal None
-    | d :: values => Value_decimal (Some (fold_left decimal_max values d))
+Definition interp_max_numeric l :=
+  if forallb is_numeric_value l then
+    match numeric_values l with
+    | nil => Value_numeric None
+    | d :: values => Value_numeric (Some (fold_left numeric_max values d))
     end
-  else Value_decimal None.
+  else Value_numeric None.
 
 Definition interp_min_z l :=
   if forallb is_z_value l then
@@ -390,6 +550,30 @@ Definition interp_min_z l :=
     | z :: values => Value_Z (Some (fold_left Z.min values z))
     end
   else Value_Z None.
+
+Definition interp_min_int32 l :=
+  if forallb is_int32_value l then
+    match int32_values l with
+    | nil => Value_int32 None
+    | z :: values =>
+        Value_int32 (Some (fold_left
+          (fun acc next =>
+             match int32_compare acc next with Gt => next | _ => acc end)
+          values z))
+    end
+  else Value_int32 None.
+
+Definition interp_min_int64 l :=
+  if forallb is_int64_value l then
+    match int64_values l with
+    | nil => Value_int64 None
+    | z :: values =>
+        Value_int64 (Some (fold_left
+          (fun acc next =>
+             match int64_compare acc next with Gt => next | _ => acc end)
+          values z))
+    end
+  else Value_int64 None.
 
 Definition interp_min_float l :=
   if forallb is_float_value l then
@@ -407,13 +591,13 @@ Definition interp_min_double l :=
     end
   else Value_double None.
 
-Definition interp_min_decimal l :=
-  if forallb is_decimal_value l then
-    match decimal_values l with
-    | nil => Value_decimal None
-    | d :: values => Value_decimal (Some (fold_left decimal_min values d))
+Definition interp_min_numeric l :=
+  if forallb is_numeric_value l then
+    match numeric_values l with
+    | nil => Value_numeric None
+    | d :: values => Value_numeric (Some (fold_left numeric_min values d))
     end
-  else Value_decimal None.
+  else Value_numeric None.
 
 Definition interp_avg_z l :=
   if forallb is_z_value l then
@@ -447,21 +631,19 @@ Definition interp_avg_double l :=
     end
   else Value_double None.
 
-Definition interp_avg_decimal l :=
-  if forallb is_decimal_value l then
-    match decimal_values l with
-    | nil => Value_decimal None
-    | values =>
-        match decimal_fold_option decimal_add decimal_zero values with
-        | Some sum =>
-            match decimal_div_by_z sum (Z.of_nat (List.length values)) (decimal_scale sum) with
-            | Some avg => Value_decimal (Some avg)
-            | None => Value_decimal None
-            end
-        | None => Value_decimal None
-        end
-    end
-  else Value_decimal None.
+(** AVG over a fixed-scale NUMERIC input. The scale is supplied by the typed
+    expression because it is intentionally absent from SQL numeric equality. *)
+Definition interp_avg_numeric_at_scale l :=
+  match l with
+  | Value_numeric (Some sum) :: Value_int64 (Some count) ::
+    Value_Z (Some input_scale) :: nil =>
+      match numeric_div_at_scales
+        sum input_scale (numeric_of_Z (int64_value count)) 0 with
+      | Some avg => Value_numeric (Some avg)
+      | None => Value_numeric None
+      end
+  | _ => Value_numeric None
+  end.
 
 Definition interp_predicate := NullPredicates.interp_predicate.
 
@@ -482,6 +664,37 @@ Definition value_bool_to_bool3 v :=
 
 Definition interp_boolean_predicate p l :=
   bool3_to_value_bool (interp_predicate p l).
+
+Definition interp_int32_binary (f : int32 -> int32 -> option int32) l :=
+  match l with
+  | Value_int32 (Some a1) :: Value_int32 (Some a2) :: nil =>
+      match f a1 a2 with
+      | Some result => Value_int32 (Some result)
+      | None => Value_int32 None
+      end
+  | _ => Value_int32 None
+  end.
+
+Definition interp_int64_binary (f : Z -> Z -> Z) l :=
+  match l with
+  | v1 :: v2 :: nil =>
+      match integral_value_as_z v1, integral_value_as_z v2 with
+      | Some a1, Some a2 => value_int64_checked (f a1 a2)
+      | _, _ => Value_int64 None
+      end
+  | _ => Value_int64 None
+  end.
+
+Definition interp_int64_div l :=
+  match l with
+  | v1 :: v2 :: nil =>
+      match integral_value_as_z v1, integral_value_as_z v2 with
+      | Some a1, Some a2 =>
+          if Z.eqb a2 0 then Value_int64 None else value_int64_checked (Z.quot a1 a2)
+      | _, _ => Value_int64 None
+      end
+  | _ => Value_int64 None
+  end.
 
 Definition interp_bool_and l :=
   match l with
@@ -573,6 +786,8 @@ Definition interp_symbol f :=
         match l with
           | Value_Z (Some a1) :: Value_Z (Some a2) :: nil => Value_Z (Some (Zplus a1 a2))
           | _ => Value_Z None end
+    | Symbol _ "plus_int32" => interp_int32_binary int32_add
+    | Symbol _ "plus_int64" => interp_int64_binary Z.add
     | Symbol _ "plus." =>
       fun l =>
         match l with
@@ -585,20 +800,19 @@ Definition interp_symbol f :=
           | Value_double (Some a1) :: Value_double (Some a2) :: nil =>
             Value_double (Some (float64_add a1 a2))
           | _ => Value_double None end
-    | Symbol _ "plus_decimal" =>
+    | Symbol _ "plus_numeric" =>
       fun l =>
         match l with
-          | Value_decimal (Some a1) :: Value_decimal (Some a2) :: nil =>
-            match decimal_add a1 a2 with
-            | Some result => Value_decimal (Some result)
-            | None => Value_decimal None
-            end
-          | _ => Value_decimal None end
+          | Value_numeric (Some a1) :: Value_numeric (Some a2) :: nil =>
+            Value_numeric (Some (numeric_add a1 a2))
+          | _ => Value_numeric None end
     | Symbol _ "mult" =>
       fun l =>
         match l with
           | Value_Z (Some a1) :: Value_Z (Some a2) :: nil => Value_Z (Some (Zmult a1 a2))
           | _ => Value_Z None end
+    | Symbol _ "mult_int32" => interp_int32_binary int32_mul
+    | Symbol _ "mult_int64" => interp_int64_binary Z.mul
     | Symbol _ "mult." =>
       fun l =>
         match l with
@@ -623,62 +837,109 @@ Definition interp_symbol f :=
           | Value_double (Some a1) :: Value_double (Some a2) :: nil =>
             Value_double (Some (float64_div a1 a2))
           | _ => Value_double None end
-    | Symbol _ "mult_decimal" =>
+    | Symbol _ "divide_int32" => interp_int32_binary int32_div
+    | Symbol _ "divide_int64" => interp_int64_div
+    | Symbol _ "mult_numeric" =>
       fun l =>
         match l with
-          | Value_decimal (Some a1) :: Value_decimal (Some a2) :: nil =>
-            match decimal_mul a1 a2 with
-            | Some result => Value_decimal (Some result)
-            | None => Value_decimal None
+          | Value_numeric (Some a1) :: Value_numeric (Some a2) :: nil =>
+            Value_numeric (Some (numeric_mul a1 a2))
+          | _ => Value_numeric None end
+    | Symbol _ "divide_numeric" =>
+      fun l =>
+        match l with
+          | Value_numeric (Some a1) :: Value_Z (Some scale1) ::
+            Value_numeric (Some a2) :: Value_Z (Some scale2) :: nil =>
+            match numeric_div_at_scales a1 scale1 a2 scale2 with
+            | Some result => Value_numeric (Some result)
+            | None => Value_numeric None
             end
-          | _ => Value_decimal None end
-    | Symbol _ "divide_decimal" =>
+          | _ => Value_numeric None end
+    | Symbol _ "divide_numeric_typmod" =>
       fun l =>
         match l with
-          | Value_decimal (Some a1) :: Value_decimal (Some a2) :: nil =>
-            match decimal_div a1 a2 with
-            | Some result => Value_decimal (Some result)
-            | None => Value_decimal None
-            end
-          | _ => Value_decimal None end
-    | Symbol _ "divide_decimal_typmod" =>
-      fun l =>
-        match l with
-          | Value_decimal (Some a1) :: Value_decimal (Some a2) ::
+          | Value_numeric (Some a1) :: Value_Z (Some scale1) ::
+            Value_numeric (Some a2) :: Value_Z (Some scale2) ::
             Value_Z (Some result_precision) :: Value_Z (Some result_scale) :: nil =>
-            match decimal_div_with_typmod a1 a2 result_precision result_scale with
-            | Some result => Value_decimal (Some result)
-            | None => Value_decimal None
+            match numeric_div_with_typmod
+              a1 scale1 a2 scale2 result_precision result_scale with
+            | Some result => Value_numeric (Some result)
+            | None => Value_numeric None
             end
-          | _ => Value_decimal None end
-    | Symbol _ "cast_decimal_typmod" =>
+          | _ => Value_numeric None end
+    | Symbol _ "avg_numeric_at_scale" => interp_avg_numeric_at_scale
+    | Symbol _ "cast_numeric_typmod" =>
       fun l =>
         match l with
-          | Value_decimal (Some d) ::
+          | Value_numeric (Some d) ::
             Value_Z (Some result_precision) :: Value_Z (Some result_scale) :: nil =>
-            match decimal_cast_typmod d result_precision result_scale with
-            | Some result => Value_decimal (Some result)
-            | None => Value_decimal None
+            match numeric_cast_typmod d result_precision result_scale with
+            | Some result => Value_numeric (Some result)
+            | None => Value_numeric None
             end
-          | _ => Value_decimal None end
-    | Symbol _ "cast_z_to_decimal_typmod" =>
+          | _ => Value_numeric None end
+    | Symbol _ "cast_numeric" =>
+      fun l =>
+        match l with
+          | Value_numeric value :: nil => Value_numeric value
+          | _ => Value_numeric None end
+    | Symbol _ "cast_z_to_numeric" =>
+      fun l =>
+        match l with
+          | Value_Z (Some z) :: nil => Value_numeric (Some (numeric_of_Z z))
+          | _ => Value_numeric None end
+    | Symbol _ "cast_int32_to_numeric" =>
+      fun l =>
+        match l with
+          | Value_int32 (Some z) :: nil =>
+            Value_numeric (Some (numeric_of_Z (int32_value z)))
+          | _ => Value_numeric None end
+    | Symbol _ "cast_int64_to_numeric" =>
+      fun l =>
+        match l with
+          | Value_int64 (Some z) :: nil =>
+            Value_numeric (Some (numeric_of_Z (int64_value z)))
+          | _ => Value_numeric None end
+    | Symbol _ "cast_z_to_numeric_typmod" =>
       fun l =>
         match l with
           | Value_Z (Some z) ::
             Value_Z (Some result_precision) :: Value_Z (Some result_scale) :: nil =>
-            match decimal_checked
-              result_precision
-              result_scale
-              (z * decimal_pow10 result_scale) with
-            | Some result => Value_decimal (Some result)
-            | None => Value_decimal None
+            match numeric_cast_typmod
+              (numeric_of_Z z) result_precision result_scale with
+            | Some result => Value_numeric (Some result)
+            | None => Value_numeric None
             end
-          | _ => Value_decimal None end
+          | _ => Value_numeric None end
+    | Symbol _ "cast_int32_to_numeric_typmod" =>
+      fun l =>
+        match l with
+          | Value_int32 (Some z) ::
+            Value_Z (Some result_precision) :: Value_Z (Some result_scale) :: nil =>
+            match numeric_cast_typmod
+              (numeric_of_Z (int32_value z)) result_precision result_scale with
+            | Some result => Value_numeric (Some result)
+            | None => Value_numeric None
+            end
+          | _ => Value_numeric None end
+    | Symbol _ "cast_int64_to_numeric_typmod" =>
+      fun l =>
+        match l with
+          | Value_int64 (Some z) ::
+            Value_Z (Some result_precision) :: Value_Z (Some result_scale) :: nil =>
+            match numeric_cast_typmod
+              (numeric_of_Z (int64_value z)) result_precision result_scale with
+            | Some result => Value_numeric (Some result)
+            | None => Value_numeric None
+            end
+          | _ => Value_numeric None end
     | Symbol _ "minus" =>
       fun l =>
         match l with
           | Value_Z (Some a1) :: Value_Z (Some a2) :: nil => Value_Z (Some (Zminus a1 a2))
           | _ => Value_Z None end
+    | Symbol _ "minus_int32" => interp_int32_binary int32_sub
+    | Symbol _ "minus_int64" => interp_int64_binary Z.sub
     | Symbol _ "minus." =>
       fun l =>
         match l with
@@ -691,15 +952,12 @@ Definition interp_symbol f :=
           | Value_double (Some a1) :: Value_double (Some a2) :: nil =>
             Value_double (Some (float64_sub a1 a2))
           | _ => Value_double None end
-    | Symbol _ "minus_decimal" =>
+    | Symbol _ "minus_numeric" =>
       fun l =>
         match l with
-          | Value_decimal (Some a1) :: Value_decimal (Some a2) :: nil =>
-            match decimal_sub a1 a2 with
-            | Some result => Value_decimal (Some result)
-            | None => Value_decimal None
-            end
-          | _ => Value_decimal None end
+          | Value_numeric (Some a1) :: Value_numeric (Some a2) :: nil =>
+            Value_numeric (Some (numeric_sub a1 a2))
+          | _ => Value_numeric None end
     | Symbol _ "date_add_days" =>
       fun l =>
         match l with
@@ -782,6 +1040,24 @@ Definition interp_symbol f :=
         match l with
           | Value_Z (Some a1) :: nil => Value_Z (Some (Z.opp a1))
           | _ => Value_Z None end
+    | Symbol _ "opp_int32" =>
+      fun l =>
+        match l with
+          | Value_int32 (Some a1) :: nil =>
+            match int32_opp a1 with
+            | Some result => Value_int32 (Some result)
+            | None => Value_int32 None
+            end
+          | _ => Value_int32 None end
+    | Symbol _ "opp_int64" =>
+      fun l =>
+        match l with
+          | v :: nil =>
+            match integral_value_as_z v with
+            | Some z => value_int64_checked (- z)
+            | None => Value_int64 None
+            end
+          | _ => Value_int64 None end
     | Symbol _ "opp." =>
       fun l =>
         match l with
@@ -794,15 +1070,12 @@ Definition interp_symbol f :=
           | Value_double (Some a1) :: nil =>
             Value_double (Some (float64_opp a1))
           | _ => Value_double None end
-    | Symbol _ "opp_decimal" =>
+    | Symbol _ "opp_numeric" =>
       fun l =>
         match l with
-          | Value_decimal (Some a1) :: nil =>
-            match decimal_opp a1 with
-            | Some result => Value_decimal (Some result)
-            | None => Value_decimal None
-            end
-          | _ => Value_decimal None end
+          | Value_numeric (Some a1) :: nil =>
+            Value_numeric (Some (numeric_opp a1))
+          | _ => Value_numeric None end
     | CstVal _ v =>
       fun l =>
         match l with
@@ -823,41 +1096,59 @@ Fixpoint distinct_values l :=
 
 Definition interp_aggregate a l :=
   match a with
-    | ValueCore.Aggregate "count_star" => Value_Z (Some (row_count l))
-    | ValueCore.Aggregate "count" => Value_Z (Some (non_null_count l))
-    | ValueCore.Aggregate "__logos_distinct_aggregate_count" => Value_Z (Some (non_null_count (distinct_values l)))
+    | ValueCore.Aggregate "count_star" => value_int64_checked (row_count l)
+    | ValueCore.Aggregate "count" => value_int64_checked (non_null_count l)
+    | ValueCore.Aggregate "__logos_distinct_aggregate_count" => value_int64_checked (non_null_count (distinct_values l))
     | ValueCore.Aggregate "sum" => interp_sum_z l
     | ValueCore.Aggregate "__logos_distinct_aggregate_sum" => interp_sum_z (distinct_values l)
+    | ValueCore.Aggregate "sum_int32" => interp_sum_int32_as_int64 l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_sum_int32" => interp_sum_int32_as_int64 (distinct_values l)
+    | ValueCore.Aggregate "sum_int64_numeric" => interp_sum_int64_as_numeric l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_sum_int64_numeric" => interp_sum_int64_as_numeric (distinct_values l)
     | ValueCore.Aggregate "sum." => interp_sum_float l
     | ValueCore.Aggregate "__logos_distinct_aggregate_sum." => interp_sum_float (distinct_values l)
     | ValueCore.Aggregate "sum_double" => interp_sum_double l
     | ValueCore.Aggregate "__logos_distinct_aggregate_sum_double" => interp_sum_double (distinct_values l)
-    | ValueCore.Aggregate "sum_decimal" => interp_sum_decimal l
-    | ValueCore.Aggregate "__logos_distinct_aggregate_sum_decimal" => interp_sum_decimal (distinct_values l)
+    | ValueCore.Aggregate "sum_numeric" => interp_sum_numeric l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_sum_numeric" => interp_sum_numeric (distinct_values l)
     | ValueCore.Aggregate "max" => interp_max_z l
     | ValueCore.Aggregate "__logos_distinct_aggregate_max" => interp_max_z (distinct_values l)
+    | ValueCore.Aggregate "max_int32" => interp_max_int32 l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_max_int32" => interp_max_int32 (distinct_values l)
+    | ValueCore.Aggregate "max_int64" => interp_max_int64 l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_max_int64" => interp_max_int64 (distinct_values l)
     | ValueCore.Aggregate "max." => interp_max_float l
     | ValueCore.Aggregate "__logos_distinct_aggregate_max." => interp_max_float (distinct_values l)
     | ValueCore.Aggregate "max_double" => interp_max_double l
     | ValueCore.Aggregate "__logos_distinct_aggregate_max_double" => interp_max_double (distinct_values l)
-    | ValueCore.Aggregate "max_decimal" => interp_max_decimal l
-    | ValueCore.Aggregate "__logos_distinct_aggregate_max_decimal" => interp_max_decimal (distinct_values l)
+    | ValueCore.Aggregate "max_numeric" => interp_max_numeric l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_max_numeric" => interp_max_numeric (distinct_values l)
     | ValueCore.Aggregate "min" => interp_min_z l
     | ValueCore.Aggregate "__logos_distinct_aggregate_min" => interp_min_z (distinct_values l)
+    | ValueCore.Aggregate "min_int32" => interp_min_int32 l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_min_int32" => interp_min_int32 (distinct_values l)
+    | ValueCore.Aggregate "min_int64" => interp_min_int64 l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_min_int64" => interp_min_int64 (distinct_values l)
     | ValueCore.Aggregate "min." => interp_min_float l
     | ValueCore.Aggregate "__logos_distinct_aggregate_min." => interp_min_float (distinct_values l)
     | ValueCore.Aggregate "min_double" => interp_min_double l
     | ValueCore.Aggregate "__logos_distinct_aggregate_min_double" => interp_min_double (distinct_values l)
-    | ValueCore.Aggregate "min_decimal" => interp_min_decimal l
-    | ValueCore.Aggregate "__logos_distinct_aggregate_min_decimal" => interp_min_decimal (distinct_values l)
+    | ValueCore.Aggregate "min_numeric" => interp_min_numeric l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_min_numeric" => interp_min_numeric (distinct_values l)
     | ValueCore.Aggregate "avg" => interp_avg_z l
     | ValueCore.Aggregate "__logos_distinct_aggregate_avg" => interp_avg_z (distinct_values l)
+    | ValueCore.Aggregate "avg_int32_numeric" => interp_avg_int32_as_numeric l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_avg_int32_numeric" => interp_avg_int32_as_numeric (distinct_values l)
+    | ValueCore.Aggregate "avg_int64_numeric" => interp_avg_int64_as_numeric l
+    | ValueCore.Aggregate "__logos_distinct_aggregate_avg_int64_numeric" => interp_avg_int64_as_numeric (distinct_values l)
     | ValueCore.Aggregate "avg." => interp_avg_float l
     | ValueCore.Aggregate "__logos_distinct_aggregate_avg." => interp_avg_float (distinct_values l)
     | ValueCore.Aggregate "avg_double" => interp_avg_double l
     | ValueCore.Aggregate "__logos_distinct_aggregate_avg_double" => interp_avg_double (distinct_values l)
-    | ValueCore.Aggregate "avg_decimal" => interp_avg_decimal l
-    | ValueCore.Aggregate "__logos_distinct_aggregate_avg_decimal" => interp_avg_decimal (distinct_values l)
+    (* Unconstrained NUMERIC does not expose PostgreSQL dscale in the bag value
+       carrier, so AVG must be expressed with [avg_numeric_at_scale] instead. *)
+    | ValueCore.Aggregate "avg_numeric" => Value_numeric None
+    | ValueCore.Aggregate "__logos_distinct_aggregate_avg_numeric" => Value_numeric None
     | ValueCore.Aggregate _ => Value_Z None
   end.
 

@@ -32,10 +32,12 @@ Hypothesis OVal : Oset.Rcd value.
 Inductive type := 
  | type_string 
  | type_Z
+ | type_int32
+ | type_int64
  | type_bool
  | type_float
  | type_double
- | type_decimal
+ | type_numeric
  | type_date
  | type_time
  | type_timestamp
@@ -48,14 +50,16 @@ Definition N_of_type :=
     match d with   
     | type_string => 0
     | type_Z => 1
-    | type_bool => 2
-    | type_float => 3
-    | type_double => 4
-    | type_decimal => 5
-    | type_date => 6
-    | type_time => 7
-    | type_timestamp => 8
-    | type_timestamptz => 9
+    | type_int32 => 2
+    | type_int64 => 3
+    | type_bool => 4
+    | type_float => 5
+    | type_double => 6
+    | type_numeric => 7
+    | type_date => 8
+    | type_time => 9
+    | type_timestamp => 10
+    | type_timestamptz => 11
     end.
 
 Definition OT : Oset.Rcd type.

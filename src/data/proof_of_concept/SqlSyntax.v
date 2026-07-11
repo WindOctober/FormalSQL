@@ -24,10 +24,12 @@ Require Import Values TuplesImpl GenericInstance.
 Definition value := NullValues.value.
 Definition Value_bool := NullValues.Value_bool.
 Definition Value_Z := NullValues.Value_Z.
+Definition Value_int32 := NullValues.Value_int32.
+Definition Value_int64 := NullValues.Value_int64.
 Definition Value_string := NullValues.Value_string.
 Definition Value_float := NullValues.Value_float.
 Definition Value_double := NullValues.Value_double.
-Definition Value_decimal := NullValues.Value_decimal.
+Definition Value_numeric := NullValues.Value_numeric.
 Definition Value_date := NullValues.Value_date.
 Definition Value_time := NullValues.Value_time.
 Definition Value_timestamp := NullValues.Value_timestamp.
@@ -65,10 +67,12 @@ Fixpoint mk_att att atts vals :=
   | _, _ => match att with
                 | Attr_string _ => Value_string None
                 | Attr_Z _ => Value_Z None
+                | Attr_int32 _ => Value_int32 None
+                | Attr_int64 _ => Value_int64 None
                 | Attr_bool _ => Value_bool None
                 | Attr_float _ => Value_float None
                 | Attr_double _ => Value_double None
-                | Attr_decimal _ _ _ => Value_decimal None
+                | Attr_numeric _ | Attr_decimal _ _ _ => Value_numeric None
                 | Attr_date _ => Value_date None
                 | Attr_time _ => Value_time None
                 | Attr_timestamp _ _ => Value_timestamp None
@@ -224,20 +228,24 @@ Definition contains_nulls (t : tuple TNull) :=
  existsb (fun a => match dot TNull t a with
                    | NullValues.Value_string None
                    | NullValues.Value_Z None
+                   | NullValues.Value_int32 None
+                   | NullValues.Value_int64 None
                    | NullValues.Value_bool None
                    | NullValues.Value_float None
                    | NullValues.Value_double None
-                   | NullValues.Value_decimal None
+                   | NullValues.Value_numeric None
                    | NullValues.Value_date None
                    | NullValues.Value_time None
                    | NullValues.Value_timestamp None
                    | NullValues.Value_timestamptz None => true
                    | NullValues.Value_string (Some _)
                    | NullValues.Value_Z (Some _)
+                   | NullValues.Value_int32 (Some _)
+                   | NullValues.Value_int64 (Some _)
                    | NullValues.Value_bool (Some _)
                    | NullValues.Value_float (Some _)
                    | NullValues.Value_double (Some _)
-                   | NullValues.Value_decimal (Some _)
+                   | NullValues.Value_numeric (Some _)
                    | NullValues.Value_date (Some _)
                    | NullValues.Value_time (Some _)
                    | NullValues.Value_timestamp (Some _)

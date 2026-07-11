@@ -53,9 +53,12 @@ Defined.
 Inductive attribute : Set :=
   | Attr_string : string -> attribute
   | Attr_Z : string -> attribute
+  | Attr_int32 : string -> attribute
+  | Attr_int64 : string -> attribute
   | Attr_bool : string -> attribute
   | Attr_float : string -> attribute
   | Attr_double : string -> attribute
+  | Attr_numeric : string -> attribute
   | Attr_decimal : string -> Z -> Z -> attribute
   | Attr_date : string -> attribute
   | Attr_time : string -> attribute
@@ -65,9 +68,12 @@ Inductive attribute : Set :=
 Register attribute as datacert.attribute.type.
 Register Attr_string as datacert.attribute.Attr_string.
 Register Attr_Z as datacert.attribute.Attr_Z.
+Register Attr_int32 as datacert.attribute.Attr_int32.
+Register Attr_int64 as datacert.attribute.Attr_int64.
 Register Attr_bool as datacert.attribute.Attr_bool.
 Register Attr_float as datacert.attribute.Attr_float.
 Register Attr_double as datacert.attribute.Attr_double.
+Register Attr_numeric as datacert.attribute.Attr_numeric.
 Register Attr_decimal as datacert.attribute.Attr_decimal.
 Register Attr_date as datacert.attribute.Attr_date.
 Register Attr_time as datacert.attribute.Attr_time.
@@ -78,10 +84,12 @@ Definition type_of_attribute (a : attribute) :=
   match a with
     | Attr_string _ => type_string
     | Attr_Z _ => type_Z
+    | Attr_int32 _ => type_int32
+    | Attr_int64 _ => type_int64
     | Attr_bool _  => type_bool
     | Attr_float _ => type_float
     | Attr_double _ => type_double
-    | Attr_decimal _ _ _ => type_decimal
+    | Attr_numeric _ | Attr_decimal _ _ _ => type_numeric
     | Attr_date _ => type_date
     | Attr_time _ => type_time
     | Attr_timestamp _ _ => type_timestamp
@@ -94,23 +102,29 @@ Definition N_of_attribute a :=
   match a with   
     | Attr_string _ => 0
     | Attr_Z _ => 1
-    | Attr_bool _ => 2
-    | Attr_float _ => 3
-    | Attr_double _ => 4
-    | Attr_decimal _ _ _ => 5
-    | Attr_date _ => 6
-    | Attr_time _ => 7
-    | Attr_timestamp _ _ => 8
-    | Attr_timestamptz _ _ => 9
+    | Attr_int32 _ => 2
+    | Attr_int64 _ => 3
+    | Attr_bool _ => 4
+    | Attr_float _ => 5
+    | Attr_double _ => 6
+    | Attr_numeric _ => 7
+    | Attr_decimal _ _ _ => 8
+    | Attr_date _ => 9
+    | Attr_time _ => 10
+    | Attr_timestamp _ _ => 11
+    | Attr_timestamptz _ _ => 12
   end.
 
 Definition N2_of_attribute a :=
   match a with
     | Attr_string s
     | Attr_Z s
+    | Attr_int32 s
+    | Attr_int64 s
     | Attr_bool s
     | Attr_float s
     | Attr_double s
+    | Attr_numeric s
     | Attr_date s
     | Attr_time s => (N_of_attribute a, (s, (0%Z, 0%Z)))
     | Attr_decimal s p sc => (N_of_attribute a, (s, (p, sc)))
