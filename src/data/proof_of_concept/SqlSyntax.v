@@ -16,7 +16,7 @@ Set Implicit Arguments.
 Require Import Relations SetoidList List String Ascii Bool ZArith NArith.
 
 Require Import Bool3 FlatData ListFacts OrderedSet
-        FiniteSet FiniteBag FiniteCollection Tree Formula Sql.
+        FiniteSet FiniteBag FiniteCollection Tree Formula.
 
 Import Tuple.
 Require Import Values TuplesImpl GenericInstance.
@@ -101,40 +101,6 @@ Definition _Select_As := (@Select_As TNull).
 
 Register _Select_As as datacert.syntax._Select_As.
 
-Definition _Att_Ren_Star := (@Att_Ren_Star TNull).
-
-Register _Att_Ren_Star as datacert.syntax._Att_Ren_Star.
-
-Definition _Att_Ren_List := (@Att_Ren_List TNull).
-
-Definition _Att_As := (@Att_As TNull).
-
-Register _Att_As as datacert.syntax._Att_As.
-
-Definition _Sql_Table := (@Sql_Table TNull relname).
-
-Register _Sql_Table as datacert.syntax._Sql_Table.
-
-Definition _Sql_Set := (@Sql_Set TNull relname).
-
-Register _Sql_Set as datacert.syntax._Sql_Set.
-
-Definition _Sql_Select := (@Sql_Select TNull relname).
-
-Register _Sql_Select as datacert.syntax._Sql_Select.
-
-Definition _select := (@select TNull).
-
-Register _select as datacert.syntax._select.
-
-Definition _From_Item := (@From_Item TNull relname).
-
-Register _From_Item as datacert.syntax._From_Item.
-
-Definition _sql_from_item := (@sql_from_item TNull relname).
-
-Register _sql_from_item as datacert.syntax._sql_from_item.
-
 Definition _Group_Fine := (@Group_Fine TNull).
 
 Register _Group_Fine as datacert.syntax._Group_Fine.
@@ -172,37 +138,6 @@ Definition CstZ z := (_A_Expr (_CstZ z)).
 Definition _F_Expr := (@F_Expr TNull).
 
 Register _F_Expr as datacert.syntax._F_Expr.
-
-Definition _sql_query := (sql_query TNull relname). 
-
-Definition _Sql_True := (@Sql_True TNull (sql_query TNull relname)).
-
-Register _Sql_True as datacert.syntax._Sql_True.
-
-Definition _Sql_Not := (@Sql_Not TNull (sql_query TNull relname)). 
-
-Register _Sql_Not as datacert.syntax._Sql_Not.
-
-
-Definition _Sql_Conj := (@Sql_Conj TNull (sql_query TNull relname)).
-
-Register _Sql_Conj as datacert.syntax._Sql_Conj.
-
-Definition _Sql_Pred := (@Sql_Pred TNull (sql_query TNull relname)).
-
-Register _Sql_Pred as datacert.syntax._Sql_Pred.
-
-Definition _Sql_Quant := (@Sql_Quant TNull (sql_query TNull relname)).
-
-Register _Sql_Quant as datacert.syntax._Sql_Quant.
-
-Definition _Sql_Exists := (@Sql_Exists TNull (sql_query TNull relname)).
-
-Register _Sql_Exists as datacert.syntax._Sql_Exists.
-
-Definition _Sql_In := (@Sql_In TNull (sql_query TNull relname)).
-
-Register _Sql_In as datacert.syntax._Sql_In.
 
 Definition _aggterm := (aggterm TNull).
 
@@ -263,9 +198,3 @@ apply existsb_eq.
 intros a Ha; rewrite <- (proj2 Ht); [apply refl_equal | ].
 apply Fset.in_elements_mem; assumption.
 Qed.
-
-(* Evaluation of SQL-COQ queries *)
-
-Definition eval_sql_query_in_state (db : db_state) q :=
-  show_bag_tuples _ (@eval_sql_query 
-     TNull relname (_basesort _ db) (_instance _ db) unknown3 contains_nulls nil q).

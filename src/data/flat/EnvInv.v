@@ -176,7 +176,7 @@ assert (__W2 := W2 _ Hv1).
 rewrite forallb_forall in _W2, __W2.
 case_eq (a inS? s); intro Ka.
 - rewrite Bool.Bool.orb_true_l.
-  unfold projection, id_renaming, sort_of_select_list; simpl;
+  unfold projection, id_renaming, select_list_sort, select_list_outputs; simpl;
     rewrite dot_mk_tuple, !map_app, !map_map.
   rewrite map_id; [ | intros; apply refl_equal].
   rewrite Fset.mem_mk_set, Oset.mem_bool_app, <- Fset.mem_elements, Ka, Bool.Bool.orb_true_l.
@@ -378,7 +378,9 @@ case_eq (Oset.mem_bool (OFun T) (F_Expr fc lf) (extract_funterms (g ++ flat_map 
          assert (Wf1 := Wt1 _ H'); rewrite Oset.eq_bool_true_iff in Wf1.
          apply (sym_eq Wf1).
       -- apply interp_dot_eq_interp_funterm_eq.
-         intros a Ha; unfold id_renaming; simpl.
+         intros a Ha;
+           unfold projection, id_renaming, select_list_sort,
+             select_list_outputs; simpl.
          rewrite (Fset.mem_eq_2 _ _ _ (labels_mk_tuple _ _ _)), dot_mk_tuple.
          rewrite !map_app, !map_map, Oset.find_app, map_id; [ | intros; apply refl_equal].
          rewrite Fset.mem_mk_set_app, (Fset.mem_eq_2 _ _ _ (Fset.mk_set_idem _ _)).
@@ -651,7 +653,9 @@ destruct e as [f | a f | f la].
                    rewrite (Fset.equal_eq_2 _ _ _ _ (labels_mk_tuple _ _ _));
                      rewrite forallb_forall in W3; split; [apply W3; assumption | ].
                    intros b Hb; rewrite dot_mk_tuple, <- (Fset.mem_eq_2 _ _ _ (W3 _ Ht)), Hb.
-                   unfold id_renaming; rewrite !map_app, !map_map, dot_mk_tuple.
+                   unfold projection, id_renaming, select_list_sort,
+                     select_list_outputs;
+                     rewrite !map_app, !map_map, dot_mk_tuple.
                    rewrite Fset.mem_mk_set_app, map_id, 
                      (Fset.mem_eq_2 _ _ _ (Fset.mk_set_idem _ _));
                      [ | intros; trivial].
@@ -668,7 +672,8 @@ destruct e as [f | a f | f la].
                    +++ rewrite <- W4'; apply Fset.is_empty_eq.
                        apply Fset.inter_eq_1; 
                          rewrite (Fset.equal_eq_1 _ _ _ _ (labels_mk_tuple _ _ _)).
-                       unfold id_renaming; rewrite !map_app, !map_map, map_id; 
+                       unfold select_list_sort, select_list_outputs, id_renaming;
+                         rewrite !map_app, !map_map, map_id;
                          [ | intros; trivial].
                        rewrite (Fset.equal_eq_1 _ _ _ _ (Fset.mk_set_app _ _ _)); 
                          apply Fset.union_eq.

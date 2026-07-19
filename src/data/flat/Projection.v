@@ -27,11 +27,8 @@ Section Sec.
 
 Hypothesis T : Rcd.
 
-Notation value := (value T).
 Notation attribute := (attribute T).
-Notation tuple := (tuple T).
 Notation aggterm := (aggterm T).
-Arguments funterm {T}.
 Arguments Group_Fine {T}.
 Arguments Group_By {T}.
 Arguments F_Dot {T}.
@@ -59,17 +56,13 @@ Notation attaggs := (list (attribute T * aggterm T))%type.
 
 Coercion pairs_of_selects : _select_list >-> attaggs.
 
-Definition select_of_pair x :=
-  match x with
-    | (a, e) => Select_As e a
-  end.
-
-Definition selects_of_pairs l := (map select_of_pair l).
-
-Definition sort_of_select_list (las : _select_list) :=
+Definition select_list_outputs (las : _select_list) :=
   match las with
     | _Select_List las => List.map (fun x => match x with Select_As _ a => a end) las
   end.
+
+Definition select_list_sort (las : _select_list) : Fset.set (A T) :=
+  Fset.mk_set (A T) (select_list_outputs las).
 
 Definition projection (env : env T) (las : select_item) :=
   match las with
@@ -84,7 +77,7 @@ Definition projection (env : env T) (las : select_item) :=
       end
     | Select_List las =>
         mk_tuple  
-          (Fset.mk_set (A T) (sort_of_select_list las))
+          (select_list_sort las)
           (fun a => 
              match Oset.find (OAtt T) a las with 
              | Some e => interp_aggterm T env e
@@ -118,7 +111,7 @@ Lemma labels_projection :
   forall env l, labels T (projection env (Select_List (_Select_List l))) =S=
                 Fset.mk_set _ (map (fun x => match x with Select_As _ a => a end) l).
 Proof.
-intros env l; unfold projection, sort_of_select_list.
+intros env l; unfold projection, select_list_sort, select_list_outputs.
 rewrite (Fset.equal_eq_1 _ _ _ _ (labels_mk_tuple _ _ _)).
 apply Fset.equal_refl.
 Qed.
@@ -148,7 +141,8 @@ intros env l1 l2; unfold join_tuple; rewrite tuple_eq; split.
   rewrite (Fset.mem_eq_2 _ _ _ (labels_projection_app _ _ _)) in Ha; rewrite Ha.
   case_eq (a inS? labels T (projection env (Select_List (_Select_List l1)))); intro Ka.
   + rewrite (Fset.mem_eq_2 _ _ _ (labels_projection _ _)) in Ka.
-    unfold projection, sort_of_select_list; rewrite !dot_mk_tuple, Ka.
+    unfold projection, select_list_sort, select_list_outputs;
+      rewrite !dot_mk_tuple, Ka.
     rewrite map_app, Fset.mem_mk_set_app, Ka; simpl; rewrite map_app, Oset.find_app.
     case_eq (Oset.find (OAtt T) a (map pair_of_select l1)); [intros; apply refl_equal | ].
     intro Abs; apply False_rec.
@@ -158,7 +152,8 @@ intros env l1 l2; unfold join_tuple; rewrite tuple_eq; split.
   + rewrite Fset.mem_union, Ka, Bool.Bool.orb_false_l in Ha.
     rewrite (Fset.mem_eq_2 _ _ _ (labels_projection _ _)) in Ha.
     rewrite (Fset.mem_eq_2 _ _ _ (labels_projection _ _)) in Ka.
-    unfold projection, sort_of_select_list; rewrite !dot_mk_tuple, map_app, Fset.mem_mk_set_app.
+    unfold projection, select_list_sort, select_list_outputs;
+      rewrite !dot_mk_tuple, map_app, Fset.mem_mk_set_app.
     rewrite Ha, Ka, Bool.Bool.orb_true_r; simpl.
     rewrite map_app, Oset.find_app.
     case_eq (Oset.find (OAtt T) a (map pair_of_select l1)); [ | intros; apply refl_equal].
@@ -175,9 +170,10 @@ Lemma dot_projection :
     dot (projection env (Select_List (_Select_List l))) a = interp_aggterm T env e.
 Proof.
 intros env l a e H D; unfold projection; rewrite dot_mk_tuple.
-assert (Ha : a inS Fset.mk_set (A T) (sort_of_select_list (_Select_List l))).
+assert (Ha : a inS select_list_sort (_Select_List l)).
 {
-  simpl; rewrite Fset.mem_mk_set, Oset.mem_bool_true_iff, in_map_iff.
+  unfold select_list_sort, select_list_outputs; simpl.
+  rewrite Fset.mem_mk_set, Oset.mem_bool_true_iff, in_map_iff.
   eexists; split; [ | apply H]; apply refl_equal.
 }
 rewrite Ha; simpl.
@@ -209,7 +205,8 @@ assert (Hf : all_diff (map fst ss)).
   refine (Oset.all_diff_permut_all_diff _ (Oset.permut_sym Hp)).
   apply Fset.all_diff_elements.
 }
-unfold projection, rename_tuple, sort_of_select_list, to_direct_renaming, apply_renaming.
+unfold projection, rename_tuple, select_list_sort, select_list_outputs,
+  to_direct_renaming, apply_renaming.
 rewrite map_map; apply mk_tuple_eq.
 - rewrite Fset.equal_spec; intro a; unfold Fset.map; rewrite !Fset.mem_mk_set.
   apply Oset.permut_mem_bool_eq; apply Oset.nb_occ_permut; intro b.
@@ -260,7 +257,8 @@ Lemma projection_id_env_t :
  forall env sa t,  labels T t =S= sa ->
         projection (env_t T env t) (Select_List (_Select_List (id_renaming sa))) =t= t.
 Proof.
-intros env sa t Ht; unfold id_renaming; simpl.
+intros env sa t Ht;
+  unfold id_renaming, projection, select_list_sort, select_list_outputs; simpl.
 rewrite tuple_eq, (Fset.equal_eq_1 _ _ _ _ (labels_mk_tuple _ _ _)), !map_map, map_id; 
   [ | trivial].
 rewrite (Fset.equal_eq_1 _ _ _ _ (Fset.mk_set_idem _ _)), (Fset.equal_eq_2 _ _ _ _ Ht).
@@ -311,73 +309,8 @@ Lemma extend_env_slice_unfold :
 Proof.
 intros env s [[sa [g | ]] l]; apply refl_equal.
 Qed.                   
-    
-(*
-
-
-
-Lemma to_direct_renaming_unfold : 
-  forall ll, to_direct_renaming ll =
-  map (fun x => match x with (a, b) => Select_As (A_Expr T (F_Dot T a)) b end) ll.
-Proof.
-intro ll; apply refl_equal.
-Qed.
-
-
-
-
-
-
-Lemma projection_id_env_g :
- forall env esq sa, 
-   (forall t, In t esq -> labels T t =S= sa) ->
-   let p := (partition (mk_olists (OVal T))
-            (fun t0 : tuple T =>
-             map (fun f  => interp_aggterm T (env_t T env t0) f)
-               (map (fun a : attribute T => A_Expr T (F_Dot T a)) ({{{sa}}}))) esq) in
-  forall x v l, In (v, l) p -> In x l ->
-        projection
-          (env_g T env (Group_By T (map (fun a : attribute T => A_Expr T (F_Dot T a)) ({{{sa}}}))) l)
-          (Select_List (id_renaming sa)) =t= x.
-Proof.
-intros env esq sa W p x v l Hl Hx; unfold p in *.
-assert (Wx := W x (in_partition _ _ _ _ _ _ Hl Hx)).
-assert (K : forall y, In y l -> y =t= x).
-{
-  intros y Hy.
-  assert (Wy := W y (in_partition _ _ _ _ _ _ Hl Hy)).
-  rewrite tuple_eq, Fset.equal_spec; split.
-  - rewrite Fset.equal_spec in Wx, Wy; intro; rewrite Wx, Wy; apply refl_equal.
-  - intros a Ha.
-    rewrite (Fset.mem_eq_2 _ _ _ Wy) in Ha.
-    assert (H := partition_homogeneous_values _ _ _ _ _ Hl _ Hy).
-    rewrite <- (partition_homogeneous_values _ _ _ _ _ Hl _ Hx) in H.
-    rewrite !map_map, <- map_eq in H.
-    assert (Ka := H a); simpl in Ka.
-    rewrite (Fset.mem_eq_2 _ _ _ Wx), (Fset.mem_eq_2 _ _ _ Wy), Ha in Ka.
-    apply Ka; apply Fset.mem_in_elements; assumption.
-}
-unfold id_renaming; simpl; rewrite !map_map, map_id; [ | intros; apply refl_equal].
-rewrite tuple_eq, (Fset.equal_eq_1 _ _ _ _ (labels_mk_tuple _ _ _)), 
-  (Fset.equal_eq_1 _ _ _ _ (Fset.mk_set_idem _ _)), (Fset.equal_eq_2 _ _ _ _ Wx); split;
-  [apply Fset.equal_refl | ].
-intros a Ha; rewrite (Fset.mem_eq_2 _ _ _ (labels_mk_tuple _ _ _)) in Ha.
-rewrite dot_mk_tuple, Ha.
-rewrite Oset.find_map; [ | rewrite  Fset.mem_mk_set, Oset.mem_bool_true_iff in Ha; apply Ha].
-rewrite (Fset.mem_eq_2 _ _ _ (Fset.mk_set_idem _ _)) in Ha.
-simpl.
-rewrite (In_quicksort (OTuple T)) in Hx.
-case_eq (quicksort (OTuple T) l); [intro Q; rewrite Q in Hx; contradiction Hx | ].
-intros x1 q1 Q.
-assert (Hx1 : x1 =t= x).
-{
-  apply K; rewrite (In_quicksort (OTuple T)), Q; left; apply refl_equal.
-}
-rewrite tuple_eq in Hx1.
-rewrite (Fset.mem_eq_2 _ _ _ (proj1 Hx1)), (Fset.mem_eq_2 _ _ _ Wx), Ha.
-apply (proj2 Hx1).
-rewrite (Fset.mem_eq_2 _ _ _ (proj1 Hx1)), (Fset.mem_eq_2 _ _ _ Wx), Ha; apply refl_equal.
-Qed.
-*)
 
 End Sec.
+
+Arguments select_list_outputs {T} _.
+Arguments select_list_sort {T} _.

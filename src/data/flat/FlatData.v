@@ -445,7 +445,8 @@ destruct W as [[[[W1 W2] W3] W4] W5]; rewrite well_formed_e_unfold, !Bool.Bool.a
   unfold l' in Hx; rewrite in_map_iff in Hx.
   destruct Hx as [t [_Hx Ht]]; subst x.
   rewrite !(Fset.mem_eq_2 _ _ _ (labels_projection _ _ _)); unfold projection.
-  unfold sort_of_select_list, id_renaming; rewrite map_app, map_map, map_id; [ | intros; trivial].
+  unfold select_list_sort, select_list_outputs, id_renaming;
+    rewrite map_app, map_map, map_id; [ | intros; trivial].
   rewrite Fset.mem_mk_set_app, !Fset.mem_mk_set; fold lb.
   rewrite !dot_mk_tuple, (proj2 (Oset.mem_bool_true_iff (OAtt T) b lb)), Bool.Bool.orb_true_r;
     [ | assumption].
@@ -741,7 +742,6 @@ intro; apply join_tuple_empty_2.
 Qed.
 
 End Sec.
-
 
 
 
