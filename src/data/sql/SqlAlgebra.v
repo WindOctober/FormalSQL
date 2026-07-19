@@ -23,29 +23,14 @@ Section Sec.
 Hypothesis T : Tuple.Rcd.
 
 Hypothesis relname : Type.
-Hypothesis ORN : Oset.Rcd relname.
-
-Notation predicate := (Tuple.predicate T).
-Notation symb := (Tuple.symbol T).
-Notation aggregate := (Tuple.aggregate T).
-Notation OPredicate := (Tuple.OPred T).
-Notation OSymb := (Tuple.OSymb T).
-Notation OAggregate := (Tuple.OAgg T).
 
 Import Tuple.
 
-Notation value := (value T).
-Notation attribute := (attribute T).
 Notation tuple := (tuple T).
-Arguments funterm {T}.
-Arguments aggterm {T}.
-Arguments Select_Star {T}.
 Arguments Select_As {T}.
 Arguments Select_List {T}.
 Arguments _Select_List {T}.
-Arguments Group_Fine {T}.
 Arguments Group_By {T}.
-Arguments F_Dot {T}.
 Arguments A_Expr {T}.
 Arguments Sql_True {T}.
 Arguments Sql_Pred {T}.
@@ -58,20 +43,15 @@ Inductive query : Type :=
   | Q_Empty_Relation : Fset.set (A T) -> query
   | Q_Table : relname -> query
   | Q_Set : set_op -> query -> query -> query
-  | Q_NaturalJoin : query -> query -> query
   | Q_CrossJoin : query -> query -> query
   | Q_Pi : _select_list T -> query -> query
   | Q_Sigma : (sql_formula T query) -> query -> query
   | Q_Gamma : _select_list T -> list (@aggterm T) -> (sql_formula T query) -> query -> query.
 
-Notation sql_formula := (sql_formula T query). 
-
 Notation setA := (Fset.set (A T)).
 Notation BTupleT := (Fecol.CBag (CTuple T)).
 Notation bagT := (Febag.bag BTupleT).
 
-Notation interp_funterm := (interp_funterm T).
-Notation interp_aggterm := (interp_aggterm T).
 Hypothesis basesort : relname -> Fset.set (Tuple.A T).
 Hypothesis instance : relname -> bagT.
 
@@ -86,7 +66,6 @@ Fixpoint sort (q : query) : setA :=
     | Q_Empty_Relation s => s
     | Q_Table t => basesort t
     | Q_Set _ q1 _ => sort q1
-    | Q_NaturalJoin q1 q2 => Fset.union _ (sort q1) (sort q2)
     | Q_CrossJoin q1 q2 => Fset.union _ (sort q1) (sort q2)
     | Q_Sigma _ q => sort q
     | Q_Pi select_list _
@@ -98,8 +77,7 @@ Fixpoint free_variables_q q :=
   | Q_Empty_Tuple
   | Q_Empty_Relation _
   | Q_Table _ => Fset.empty (A T)
-  | Q_Set _ q1 q2 
-  | Q_NaturalJoin q1 q2
+  | Q_Set _ q1 q2
   | Q_CrossJoin q1 q2 => (free_variables_q q1) unionS (free_variables_q q2)
   | Q_Pi (_Select_List s) q => free_variables_q q unionS 
                  (Fset.diff _
@@ -126,7 +104,6 @@ Lemma sort_unfold :
     | Q_Empty_Relation s => s
     | Q_Table t => basesort t
     | Q_Set _ q1 _ => sort q1
-    | Q_NaturalJoin q1 q2 => Fset.union _ (sort q1) (sort q2)
     | Q_CrossJoin q1 q2 => Fset.union _ (sort q1) (sort q2)
     | Q_Sigma _ q => sort q
     | Q_Pi select_list _
@@ -143,12 +120,6 @@ Hypothesis contains_nulls : tuple -> bool.
 Hypothesis contains_nulls_eq : forall t1 t2, t1 =t= t2 -> contains_nulls t1 = contains_nulls t2.
 
 Notation eval_sql_formula := (eval_sql_formula unknown contains_nulls).
-Notation natural_join_bag b1 b2 := 
-  (Febag.mk_bag 
-     (Fecol.CBag (CTuple T))
-     (natural_join_list T
-        (Febag.elements (Fecol.CBag (CTuple T)) b1) (Febag.elements (Fecol.CBag (CTuple T)) b2))).
-
 Notation cross_join_bag b1 b2 :=
   (Febag.mk_bag
      (Fecol.CBag (CTuple T))
@@ -164,7 +135,6 @@ Fixpoint eval_query env q {struct q} : bagT :=
     if sort q1 =S?= sort q2 
     then Febag.interp_set_op _ o (eval_query env q1) (eval_query env q2)
     else Febag.empty _
-  | Q_NaturalJoin q1 q2 => natural_join_bag (eval_query env q1) (eval_query env q2)
   | Q_CrossJoin q1 q2 => cross_join_bag (eval_query env q1) (eval_query env q2)
   | Q_Pi s q => 
     Febag.map _  _ (fun t => projection T (env_t T env t) (Select_List s)) (eval_query env q) 
@@ -191,7 +161,6 @@ Lemma eval_query_unfold :
     if sort q1 =S?= sort q2 
     then Febag.interp_set_op _ o (eval_query env q1) (eval_query env q2)
     else Febag.empty _
-  | Q_NaturalJoin q1 q2 => natural_join_bag (eval_query env q1) (eval_query env q2)
   | Q_CrossJoin q1 q2 => cross_join_bag (eval_query env q1) (eval_query env q2)
   | Q_Pi s q => 
     Febag.map _  _ (fun t => projection T (env_t T env t) (Select_List s)) (eval_query env q) 
@@ -211,7 +180,7 @@ Proof.
 intros env q; case q; intros; apply refl_equal.
 Qed.
 
- (** * Syntactic comparison of queries *)
+(** * Syntactic comparison of queries *)
 
 Definition All := (All T relname).
 
@@ -228,7 +197,6 @@ Fixpoint tree_of_query (q : query) : tree All :=
            | Diff => 8 
            | UnionMax => 9 end)
         (tree_of_query q1 :: tree_of_query q2 :: nil)
-    | Q_NaturalJoin q1 q2 => Node 10 (tree_of_query q1 :: tree_of_query q2 :: nil)
     | Q_CrossJoin q1 q2 => Node 14 (tree_of_query q1 :: tree_of_query q2 :: nil)
     | Q_Pi s q => Node 11 (tree_of_select_item _ (Select_List s) :: tree_of_query q :: nil)
     | Q_Sigma f q => Node 12 (tree_of_sql_formula tree_of_query f ::  tree_of_query q :: nil)
@@ -253,7 +221,6 @@ Lemma tree_of_query_unfold :
            | Diff => 8 
            | UnionMax => 9 end)
         (tree_of_query q1 :: tree_of_query q2 :: nil)
-    | Q_NaturalJoin q1 q2 => Node 10 (tree_of_query q1 :: tree_of_query q2 :: nil)
     | Q_CrossJoin q1 q2 => Node 14 (tree_of_query q1 :: tree_of_query q2 :: nil)
     | Q_Pi s q => Node 11 (tree_of_select_item _ (Select_List s) :: tree_of_query q :: nil)
     | Q_Sigma f q => Node 12 (tree_of_sql_formula tree_of_query f ::  tree_of_query q :: nil)
@@ -281,7 +248,8 @@ Proof.
 intro n; induction n as [ | n]; repeat split.
 - intros q Hn; destruct q; inversion Hn.
 - intros f Hn; destruct f; inversion Hn.
-- intros q Hn env1 env2 He; destruct q as [ | s0 | r | o q1 q2 | q1 q2 | q1 q2 | [s] q | f q | [s] g f q];
+- intros q Hn env1 env2 He;
+  destruct q as [ | s0 | r | o q1 q2 | q1 q2 | [s] q | f q | [s] g f q];
   rewrite Febag.nb_occ_equal; intro t.
   + apply refl_equal. 
   + apply refl_equal.
@@ -309,27 +277,6 @@ intro n; induction n as [ | n]; repeat split.
     * rewrite 2 Febag.nb_occ_union_max, IH1, IH2; apply refl_equal.
     * rewrite 2 Febag.nb_occ_inter, IH1, IH2; apply refl_equal.
     * rewrite 2 Febag.nb_occ_diff, IH1, IH2; apply refl_equal.
-  + rewrite 2 (eval_query_unfold _ (Q_NaturalJoin _ _)).
-    assert (IH1 : eval_query env1 q1 =BE= eval_query env2 q1).
-    {
-      apply (proj1 IHn); [ | assumption].
-      rewrite tree_of_query_unfold in Hn; simpl in Hn.
-      refine (le_trans _ _ _ _ (le_S_n _ _ Hn)).
-      apply le_plus_l.
-    }
-    assert (IH2 : eval_query env1 q2 =BE= eval_query env2 q2).
-    {
-      apply (proj1 IHn); [ | assumption].
-      rewrite tree_of_query_unfold in Hn; simpl in Hn.
-      refine (le_trans _ _ _ _ (le_S_n _ _ Hn)).
-      refine (le_trans _ _ _ _ (le_plus_r _ _)).
-      apply le_plus_l.
-    }
-    rewrite Febag.nb_occ_equal in IH1, IH2.
-    rewrite 2 Febag.nb_occ_mk_bag.
-    apply natural_join_list_eq.
-    * intro t1; rewrite <- 2 Febag.nb_occ_elements; apply IH1.
-    * intro t2; rewrite <- 2 Febag.nb_occ_elements; apply IH2.
   + rewrite 2 (eval_query_unfold _ (Q_CrossJoin _ _)).
     assert (IH1 : eval_query env1 q1 =BE= eval_query env2 q1).
     {
@@ -466,7 +413,8 @@ Lemma well_sorted_query_etc :
 Proof.
 intros WI n; induction n as [ | n]; intros q Hn env t Ht;
   [destruct q; inversion Hn | ].
-destruct q as [ | s0 | r | o q1 q2 | q1 q2 | q1 q2 | [s] q | f q | [s] g f q]; rewrite eval_query_unfold in Ht.
+destruct q as [ | s0 | r | o q1 q2 | q1 q2 | [s] q | f q | [s] g f q];
+  rewrite eval_query_unfold in Ht.
 - rewrite Febag.mem_nb_occ, Febag.nb_occ_singleton in Ht.
   case_eq (Oeset.eq_bool (OTuple T) t (empty_tuple T)); intro Kt; rewrite Kt in Ht.
   + rewrite Oeset.eq_bool_true_compare_eq in Kt.
@@ -513,30 +461,6 @@ destruct q as [ | s0 | r | o q1 q2 | q1 q2 | q1 q2 | [s] q | f q | [s] g f q]; r
       refine (le_trans _ _ _ _ (le_S_n _ _ Hn)).
       apply le_plus_l.
   + rewrite Febag.empty_spec_weak in Ht; discriminate Ht.
-- rewrite Febag.mem_mk_bag, Oeset.mem_bool_true_iff in Ht.
-  destruct Ht as [t' [Ht Ht']].
-  unfold natural_join_list in Ht'; rewrite theta_join_list_unfold, in_flat_map in Ht'.
-  destruct Ht' as [t1 [Ht1 Ht']].
-  rewrite d_join_list_unfold, in_map_iff in Ht'.
-  destruct Ht' as [t2 [Ht2 Ht']].
-  rewrite filter_In in Ht'.
-  rewrite tuple_eq in Ht; rewrite (Fset.equal_eq_1 _ _ _ _ (proj1 Ht)); rewrite <- Ht2.
-  simpl; unfold join_tuple.
-  rewrite (Fset.equal_eq_1 _ _ _ _ (labels_mk_tuple _ _ _)).
-  apply Fset.union_eq.
-  + apply IHn with env.
-    * rewrite tree_of_query_unfold in Hn; simpl in Hn.
-      refine (le_trans _ _ _ _ (le_S_n _ _ Hn)).
-      apply le_plus_l.
-    * rewrite Febag.mem_unfold, Oeset.mem_bool_true_iff.
-      exists t1; split; [apply Oeset.compare_eq_refl | assumption].
-  + apply IHn with env.
-    * rewrite tree_of_query_unfold in Hn; simpl in Hn.
-      refine (le_trans _ _ _ _ (le_S_n _ _ Hn)).
-      refine (le_trans _ _ _ _ (le_plus_r _ _)).
-      apply le_plus_l.
-    * rewrite Febag.mem_unfold, Oeset.mem_bool_true_iff.
-      exists t2; split; [apply Oeset.compare_eq_refl | apply (proj1 Ht')].
 - rewrite Febag.mem_mk_bag, Oeset.mem_bool_true_iff in Ht.
   destruct Ht as [t' [Ht Ht']].
   unfold brute_left_join_list in Ht'; rewrite theta_join_list_unfold, in_flat_map in Ht'.
@@ -609,8 +533,7 @@ Qed.
 Lemma is_true_eval_f_eq :
   forall env f,
     let eval_f := fun t => eval_sql_formula eval_query (env_t T env t) f in
-    forall t1 t2, t1 =t= t2 ->
-      Bool.is_true (B T) (eval_f t1) = Bool.is_true (B T) (eval_f t2).
+    forall t1 t2, t1 =t= t2 -> Bool.is_true (B T) (eval_f t1) = Bool.is_true (B T) (eval_f t2).
 Proof.
 intros env f eval_f t1 t2 Ht; apply f_equal.
 apply eval_f_eq; assumption.
@@ -626,7 +549,6 @@ Fixpoint well_formed_q env q {struct q} :=
   | Q_Empty_Relation s => fresh_att_in_env s env
   | Q_Table r =>  fresh_att_in_env (basesort r) env
   | Q_Set _ q1 q2
-  | Q_NaturalJoin q1 q2
   | Q_CrossJoin q1 q2 => well_formed_q env q1 && well_formed_q env q2
   | Q_Pi (_Select_List s) q => 
        well_formed_q env q 
@@ -682,7 +604,6 @@ Lemma well_formed_q_unfold :
   | Q_Empty_Relation s => fresh_att_in_env s env
   | Q_Table r =>  fresh_att_in_env (basesort r) env
   | Q_Set _ q1 q2
-  | Q_NaturalJoin q1 q2
   | Q_CrossJoin q1 q2 => well_formed_q env q1 && well_formed_q env q2
   | Q_Pi (_Select_List s) q => 
        well_formed_q env q 
@@ -710,7 +631,8 @@ set (n := tree_size (tree_of_query q)).
 assert (Hn := le_n n).
 unfold n at 1 in Hn; clearbody n.
 revert q Hn; induction n as [ | n]; intros q Hn Wq; [destruct q; inversion Hn | ].
-  destruct q as [ | s0 | r | o q1 q2 | q1 q2 | q1 q2 | [s] q | f q | [s] g f q]; simpl.
+  destruct q as [ | s0 | r | o q1 q2 | q1 q2 | [s] q | f q | [s] g f q];
+    simpl.
 - rewrite Fset.is_empty_spec, Fset.equal_spec.
   intros a; rewrite Fset.mem_inter, Fset.empty_spec; apply refl_equal.
 - apply Wq.
@@ -720,31 +642,6 @@ revert q Hn; induction n as [ | n]; intros q Hn Wq; [destruct q; inversion Hn | 
   simpl in Hn.
   refine (le_trans _ _ _ _ (le_S_n _ _ Hn)).
   apply le_plus_l.
-- simpl in Hn, Wq; rewrite !Bool.Bool.andb_true_iff in Wq; destruct Wq as [Wq1 Wq2].
-  assert (Hn1 : (tree_size (tree_of_query q1) <= n)%nat).
-  {
-    refine (le_trans _ _ _ _ (le_S_n _ _ Hn)).
-    apply le_plus_l.
-  }
-  assert (IH1 := IHn _ Hn1 Wq1); rewrite Fset.is_empty_spec, Fset.equal_spec in IH1.
-  assert (Hn2 : (tree_size (tree_of_query q2) <= n)%nat).
-  {
-    refine (le_trans _ _ _ _ (le_S_n _ _ Hn)).
-    refine (le_trans _ _ _ _ (le_plus_r _ _)).
-    apply le_plus_l.
-  }
-  assert (IH2 := IHn _ Hn2 Wq2); rewrite Fset.is_empty_spec, Fset.equal_spec in IH2.
-  rewrite Fset.is_empty_spec, Fset.equal_spec; intro a.
-  assert (Ha1 := IH1 a); assert (Ha2 := IH2 a).
-  rewrite Fset.mem_inter, Fset.empty_spec, Bool.Bool.andb_false_iff in Ha1, Ha2.
-  rewrite Fset.mem_inter, Fset.mem_union, Fset.empty_spec.
-  case_eq (a inS? sort q1); intro Ka1; rewrite Ka1 in Ha1.
-  + destruct Ha1 as [Ha1 | Ha1]; [discriminate Ha1 | ].
-    rewrite Ha1, Bool.Bool.andb_false_r; apply refl_equal.
-  + case_eq (a inS? sort q2); intro Ka2; rewrite Ka2 in Ha2.
-    destruct Ha2 as [Ha2 | Ha2]; [discriminate Ha2 | ].
-    * rewrite Ha2, Bool.Bool.andb_false_r; apply refl_equal.
-    * apply refl_equal.
 - simpl in Hn, Wq; rewrite !Bool.Bool.andb_true_iff in Wq; destruct Wq as [Wq1 Wq2].
   assert (Hn1 : (tree_size (tree_of_query q1) <= n)%nat).
   {
@@ -851,7 +748,8 @@ intro n; induction n as [ | n]; split.
     apply le_S.
     refine (le_trans _ _ _ _ (le_plus_l _ _)).
     apply le_plus_l.
-- intros q Hn env1 env2 He; destruct q as [ | s0 | r | o q1 q2 | q1 q2 | q1 q2 | [s] q | f q | [s] g f q].
+- intros q Hn env1 env2 He;
+  destruct q as [ | s0 | r | o q1 q2 | q1 q2 | [s] q | f q | [s] g f q].
   + apply refl_equal.
   + simpl; unfold fresh_att_in_env; apply Fset.is_empty_eq.
     apply Fset.inter_eq_2.
@@ -871,14 +769,6 @@ intro n; induction n as [ | n]; split.
       unfold equiv_env_slice in H2; destruct H2 as [K1 K2].
       simpl; apply Fset.union_eq; [assumption | ].
       apply IHenv1; assumption.
-  + simpl; apply f_equal2.
-    * apply (proj2 IHn); trivial.
-      simpl in Hn; refine (le_trans _ _ _ _ (le_S_n _ _ Hn)).
-      apply le_plus_l.
-    * apply (proj2 IHn); trivial.
-      simpl in Hn; refine (le_trans _ _ _ _ (le_S_n _ _ Hn)).
-      refine (le_trans _ _ _ _ (le_plus_r _ _)).
-      apply le_plus_l.
   + simpl; apply f_equal2.
     * apply (proj2 IHn); trivial.
       simpl in Hn; refine (le_trans _ _ _ _ (le_S_n _ _ Hn)).

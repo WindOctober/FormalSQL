@@ -12,7 +12,8 @@
 (************************************************************************************)
 
 Require Import Arith NArith ZArith String List. 
-Require Import ListFacts OrderedSet FiniteSet FiniteBag FiniteCollection FlatData.
+Require Import ListFacts OrderedSet DecidableEquality FiniteSet FiniteBag
+        FiniteCollection FlatData.
 
 Module Tuple1.
 
@@ -26,7 +27,6 @@ Hypothesis type_of_value : value -> type.
 Hypothesis default_value : type -> value. 
 Hypothesis OAtt : Oset.Rcd attribute. 
 Hypothesis FAN : Fset.Rcd OAtt.
-Hypothesis OT : Oset.Rcd type.
 Hypothesis OVal : Oset.Rcd value.
 Hypothesis FVal : Fset.Rcd OVal.
 
@@ -154,15 +154,15 @@ case_eq (Fset.compare FAN fa1 fa2); intro Hfa.
   apply refl_equal.
 Qed.
 
-Definition T predicate symbol aggregate 
-           (OP : Oset.Rcd predicate) 
-           (OSymb : Oset.Rcd symbol)
-           (OAgg : Oset.Rcd aggregate) 
-           B interp_pred interp_symb interp_agg : Tuple.Rcd :=
-(@Tuple.mk_R type attribute value predicate symbol aggregate tuple
-             default_value _ FAN OVal FVal OP OSymb OAgg OTuple CT
+Definition T predicate scalar_operator aggregate
+           (scalar_operator_eq_dec : EqDec.t scalar_operator)
+           (aggregate_eq_dec : EqDec.t aggregate)
+           B predicate_arity interp_pred interp_scalar interp_agg : Tuple.Rcd :=
+(@Tuple.mk_R type attribute value predicate scalar_operator aggregate tuple
+             default_value _ FAN OVal FVal
+             scalar_operator_eq_dec aggregate_eq_dec OTuple CT
              type_of_attribute type_of_value support dot mk_tuple 
-             B interp_pred interp_symb interp_agg
+             B predicate_arity interp_pred interp_scalar interp_agg
              support_mk_tuple_ok dot_mk_tuple_ok tuple_eq_ok).
 
 End Sec.
@@ -181,7 +181,6 @@ Hypothesis type_of_value : value -> type.
 Hypothesis default_value : type -> value. 
 Hypothesis OAtt : Oset.Rcd attribute. 
 Hypothesis FAN : Fset.Rcd OAtt.
-Hypothesis OT : Oset.Rcd type.
 Hypothesis OVal : Oset.Rcd value.
 Hypothesis FVal : Fset.Rcd OVal.
 
@@ -332,18 +331,17 @@ unfold tuple_compare, support, dot; simpl; split.
     apply H2; apply Fset.in_elements_mem; assumption.
 Qed.
 
-Definition T predicate symbol aggregate 
-           (OP : Oset.Rcd predicate) 
-           (OSymb : Oset.Rcd symbol)
-           (OAgg : Oset.Rcd aggregate) 
-           B interp_pred interp_symb interp_agg : Tuple.Rcd :=
-(@Tuple.mk_R type attribute value predicate symbol aggregate tuple
-             default_value _ FAN OVal FVal OP OSymb OAgg OTuple
+Definition T predicate scalar_operator aggregate
+           (scalar_operator_eq_dec : EqDec.t scalar_operator)
+           (aggregate_eq_dec : EqDec.t aggregate)
+           B predicate_arity interp_pred interp_scalar interp_agg : Tuple.Rcd :=
+(@Tuple.mk_R type attribute value predicate scalar_operator aggregate tuple
+             default_value _ FAN OVal FVal
+             scalar_operator_eq_dec aggregate_eq_dec OTuple
              CT type_of_attribute type_of_value support dot mk_tuple 
-             B interp_pred interp_symb interp_agg
+             B predicate_arity interp_pred interp_scalar interp_agg
              support_mk_tuple_ok dot_mk_tuple_ok tuple_eq_ok).
 
 End Sec.
 
 End Tuple2.
-

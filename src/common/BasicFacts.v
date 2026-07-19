@@ -13,12 +13,6 @@
 
 Set Implicit Arguments.
 
-Ltac unfold_tac :=
-  match goal with
-    |- forall x, ?a1 = ?a2 =>
-    intro x; case x; intros; apply refl_equal
-    end.
-
 Lemma snd_unfold :
   forall (A B : Type) (a : A) (b : B), snd (a, b) = b.
 Proof.

@@ -340,20 +340,6 @@ case_eq (comparelA compareA x1 x2); intro Hx; rewrite Hx in H; try discriminate 
 apply comparelA_eq_app; [ | apply IHl1]; assumption.
 Qed.
 
-Section BuildOption.
-
-Hypothesis A : Type.
-Hypothesis compareA : A -> A -> comparison.
-
-Definition option_to_list (o : option A) :=
-  match o with
-  | Some x => x :: nil
-  | None => nil
-  end.
-
-Definition compareoA o1 o2 := comparelA compareA (option_to_list o1) (option_to_list o2).
-
-End BuildOption.
 
 (** ** Equivalence *)
 
@@ -3287,100 +3273,6 @@ Qed.
 End BuildPair.
 
 
-Section BuildPairLeft.
-
-Hypothesis A B : Type.
-Hypothesis compareA : A -> A -> comparison.
-
-(** How to build a comparison function [compareAl] over the pairs [(A * B)] from a comparison function [compareA] over [A]. *)
-Definition compareAl (ab1 ab2 : A * B) : comparison :=
-  match ab1, ab2 with
-  | (a1, b1), (a2, b2) => compareA a1 a2
-  end.
-
-Lemma compareAl_eq_refl : forall a b, compareA a a = Eq -> compareAl (a, b) (a, b) = Eq.
-Proof.
-intros a b Ha; unfold compareAl; rewrite Ha; apply refl_equal.
-Qed.
-
-Lemma compareAl_eq_sym :
-  forall a1 b1 a2 b2,
-    (compareA a1 a2 = Eq -> compareA a2 a1 = Eq) ->
-    compareAl (a1, b1) (a2, b2) = Eq -> compareAl (a2, b2) (a1, b1) = Eq.
-Proof.
-intros a1 b1 a2 b2; unfold compareAl.
-case (compareA a1 a2).
-intro HA; rewrite HA; [ | apply refl_equal].
-exact (fun h => h).
-discriminate.
-discriminate.
-Qed.
-
-Lemma compareAl_eq_trans :
-  forall a1 b1 a2 b2 a3 b3,
-   (compareA a1 a2 = Eq -> compareA a2 a3 = Eq -> compareA a1 a3 = Eq) ->
-  compareAl (a1, b1) (a2, b2) = Eq -> compareAl (a2, b2) (a3, b3) = Eq -> compareAl (a1, b1) (a3, b3) = Eq.
-Proof.
-intros a1 b1 a2 b2 a3 b3 HA HB; simpl.
-case_eq (compareA a1 a2); intro A12; auto.
-Qed.
-
-Lemma compareAl_le_lt_trans :
-    forall a1 b1 a2 b2 a3 b3,
-    (compareA a1 a2 = Eq -> compareA a2 a3 = Eq -> compareA a1 a3 = Eq) ->
-    (compareA a1 a2 = Eq -> compareA a2 a3 = Lt -> compareA a1 a3 = Lt) ->
-    compareAl (a1, b1) (a2, b2) = Eq -> compareAl (a2, b2) (a3, b3) = Lt -> compareAl (a1, b1) (a3, b3) = Lt.
-Proof.
-intros a1 b1 a2 b2 a3 b3 HA KA; simpl.
-case_eq (compareA a1 a2); intro A12; [ | intro Abs; discriminate Abs | intro Abs; discriminate Abs].
-intro B12; case_eq (compareA a2 a3); intro A23; [ |  | intro Abs; discriminate Abs].
-discriminate.
-intros _; rewrite (KA A12 A23); apply refl_equal.
-Qed.
-
-Lemma compareAl_lt_le_trans :
-    forall a1 b1 a2 b2 a3 b3,
-    (compareA a1 a2 = Eq -> compareA a2 a3 = Eq -> compareA a1 a3 = Eq) ->
-    (compareA a1 a2 = Lt -> compareA a2 a3 = Eq -> compareA a1 a3 = Lt) ->
-    compareAl (a1, b1) (a2, b2) = Lt -> compareAl (a2, b2) (a3, b3) = Eq -> compareAl (a1, b1) (a3, b3) = Lt.
-Proof.
-intros a1 b1 a2 b2 a3 b3 HA KA; simpl.
-case_eq (compareA a1 a2); intro A12; [ | | intro Abs; discriminate Abs].
-intro B12; case_eq (compareA a2 a3); intro A23; [ | intro Abs; discriminate Abs  | intro Abs; discriminate Abs].
-discriminate.
-intros _; case_eq (compareA a2 a3); intro A23; [ | intro Abs; discriminate Abs  | intro Abs; discriminate Abs].
-intro B23; rewrite (KA A12 A23); apply refl_equal.
-Qed.
-
-Lemma compareAl_lt_trans :
-    forall a1 b1 a2 b2 a3 b3,
-    (compareA a1 a2 = Eq -> compareA a2 a3 = Eq -> compareA a1 a3 = Eq) ->
-    (compareA a1 a2 = Eq -> compareA a2 a3 = Lt -> compareA a1 a3 = Lt) ->
-    (compareA a1 a2 = Lt -> compareA a2 a3 = Eq -> compareA a1 a3 = Lt) ->
-    (compareA a1 a2 = Lt -> compareA a2 a3 = Lt -> compareA a1 a3 = Lt) ->
-    compareAl (a1, b1) (a2, b2) = Lt -> compareAl (a2, b2) (a3, b3) = Lt -> compareAl (a1, b1) (a3, b3) = Lt.
-Proof.
-intros a1 b1 a2 b2 a3 b3 HA KA JA LA; simpl.
-case_eq (compareA a1 a2); intro A12; [ | | intro Abs; discriminate Abs].
-intro B12; case_eq (compareA a2 a3); intro A23; [ |  | intro Abs; discriminate Abs].
-discriminate.
-intros _; rewrite (KA A12 A23); apply refl_equal.
-intros _; case_eq (compareA a2 a3); intro A23; [ |  | intro Abs; discriminate Abs].
-intro B23; rewrite (JA A12 A23); apply refl_equal.
-intros _; rewrite (LA A12 A23); apply refl_equal.
-Qed.
-
-Lemma compareAl_lt_gt :
-    forall a1 b1 a2 b2,
-    (compareA a1 a2 = CompOpp (compareA a2 a1)) ->
-    compareAl (a1, b1) (a2, b2) = CompOpp (compareAl (a2, b2) (a1, b1)).
-Proof.
-intros a1 b1 a2 b2 HA; unfold compareAl.
-rewrite HA.
-case (compareA a2 a1); simpl; apply refl_equal.
-Qed.
-
-End BuildPairLeft.
 
 
 Definition mk_opairs (A B : Type) (OA : Oset.Rcd A) (SB : Oset.Rcd B) : Oset.Rcd (A * B).
@@ -3399,52 +3291,6 @@ split with (compareAB (Oset.compare OA) (Oset.compare SB)).
   + apply Oset.compare_lt_gt.
   + apply Oset.compare_lt_gt.
 Defined.
-
-Definition mk_oepairs (A B : Type) (OA : Oeset.Rcd A) (SB : Oeset.Rcd B) : Oeset.Rcd (A * B).
-Proof.
-split with (compareAB (Oeset.compare OA) (Oeset.compare SB)).
-- intros [a1 b1] [a2 b2] [a3 b3]; apply compareAB_eq_trans.
-  + apply Oeset.compare_eq_trans.
-  + apply Oeset.compare_eq_trans.
-- intros [a1 b1] [a2 b2] [a3 b3]; apply compareAB_le_lt_trans.
-  + apply Oeset.compare_eq_trans.
-  + apply Oeset.compare_eq_lt_trans.
-  + apply Oeset.compare_eq_lt_trans.
-- intros [a1 b1] [a2 b2] [a3 b3]; apply compareAB_lt_le_trans.
-  + apply Oeset.compare_eq_trans.
-  + apply Oeset.compare_lt_eq_trans.
-  + apply Oeset.compare_lt_eq_trans.
-- intros [a1 b1] [a2 b2] [a3 b3]; apply compareAB_lt_trans.
-  + apply Oeset.compare_eq_trans.
-  + apply Oeset.compare_eq_lt_trans.
-  + apply Oeset.compare_lt_eq_trans.
-  + apply Oeset.compare_lt_trans.
-  + apply Oeset.compare_lt_trans.
-- intros [a1 b1] [a2 b2]; apply compareAB_lt_gt.
-  + apply Oeset.compare_lt_gt.
-  + apply Oeset.compare_lt_gt.
-Defined.
-
-Definition mk_oepairsleft (A B : Type) (OA : Oeset.Rcd A) : Oeset.Rcd (A * B).
-Proof.
-split with (compareAl (Oeset.compare OA)).
-- intros [a1 b1] [a2 b2] [a3 b3]; apply compareAl_eq_trans.
-  apply Oeset.compare_eq_trans.
-- intros [a1 b1] [a2 b2] [a3 b3]; apply compareAl_le_lt_trans.
-  + apply Oeset.compare_eq_trans.
-  + apply Oeset.compare_eq_lt_trans.
-- intros [a1 b1] [a2 b2] [a3 b3]; apply compareAl_lt_le_trans.
-  + apply Oeset.compare_eq_trans.
-  + apply Oeset.compare_lt_eq_trans.
-- intros [a1 b1] [a2 b2] [a3 b3]; apply compareAl_lt_trans.
-  + apply Oeset.compare_eq_trans.
-  + apply Oeset.compare_eq_lt_trans.
-  + apply Oeset.compare_lt_eq_trans.
-  + apply Oeset.compare_lt_trans.
-- intros [a1 b1] [a2 b2]; apply compareAl_lt_gt.
-  apply Oeset.compare_lt_gt.
-Defined.
-
 
 Definition mk_olists (A : Type) (OA : Oset.Rcd A) : Oset.Rcd (list A).
 Proof.
@@ -3479,47 +3325,6 @@ split with (comparelA (Oeset.compare OA)).
 - intros l1 l2; apply comparelA_lt_gt.
   do 4 intro; apply Oeset.compare_lt_gt.
 Defined.
-
-Definition mk_ooption (A : Type) (OA : Oset.Rcd A) : Oset.Rcd (option A).
-Proof.
-split with (compareoA (Oset.compare OA)).
-- intros a1 a2; unfold compareoA, option_to_list.
-  destruct a1 as [a1 | ]; destruct a2 as [a2 | ]; simpl; try discriminate; trivial.
-  case_eq (Oset.compare OA a1 a2); intro Ha.
-  + apply f_equal; assert (H := Oset.eq_bool_ok OA a1 a2); rewrite Ha in H; apply H.
-  + intro H; injection H; clear H; intro H; rewrite H, Oset.compare_eq_refl in Ha;
-      discriminate Ha.
-  + intro H; injection H; clear H; intro H; rewrite H, Oset.compare_eq_refl in Ha;
-      discriminate Ha.
-- do 3 intro; unfold compareoA, option_to_list; apply comparelA_lt_trans.
-  + do 6 intro; apply Oset.compare_eq_trans.
-  + do 6 intro; apply Oset.compare_eq_lt_trans.
-  + do 6 intro; apply Oset.compare_lt_eq_trans.
-  + do 6 intro; apply Oset.compare_lt_trans.
-- do 2 intro; unfold compareoA, option_to_list; apply comparelA_lt_gt.
-  do 4 intro; apply Oset.compare_lt_gt.
-Defined.
-
-Definition mk_oeoption (A : Type) (OA : Oeset.Rcd A) : Oeset.Rcd (option A).
-Proof.
-split with (compareoA (Oeset.compare OA)).
-- do 3 intro; unfold compareoA, option_to_list; apply comparelA_eq_trans.
-  do 6 intro; apply Oeset.compare_eq_trans.
-- do 3 intro; unfold compareoA, option_to_list; apply comparelA_le_lt_trans.
-  + do 6 intro; apply Oeset.compare_eq_trans.
-  + do 6 intro; apply Oeset.compare_eq_lt_trans.
-- do 3 intro; unfold compareoA, option_to_list; apply comparelA_lt_le_trans.
-  + do 6 intro; apply Oeset.compare_eq_trans.
-  + do 6 intro; apply Oeset.compare_lt_eq_trans.
-- do 3 intro; unfold compareoA, option_to_list; apply comparelA_lt_trans.
-  + do 6 intro; apply Oeset.compare_eq_trans.
-  + do 6 intro; apply Oeset.compare_eq_lt_trans.
-  + do 6 intro; apply Oeset.compare_lt_eq_trans.
-  + do 6 intro; apply Oeset.compare_lt_trans.
-- do 2 intro; unfold compareoA, option_to_list; apply comparelA_lt_gt.
-  do 4 intro; apply Oeset.compare_lt_gt.
-Defined.
-
 
 Section Group.
 
@@ -3865,14 +3670,7 @@ Qed.
 
 
     (** Some concrete ordered sets. *)
-Require Import Arith NArith.
-
-Definition Ounit : Oset.Rcd unit.
-split with (fun _ _ => Eq).
-- intros a1 a2; destruct a1; destruct a2; apply refl_equal.
-- intros; discriminate.
-- intros; apply refl_equal.
-Defined.
+From Stdlib Require Import Arith.
 
 Definition bool_compare b1 b2 :=
   match b1, b2 with
@@ -3887,34 +3685,6 @@ split with bool_compare.
 - intros [ | ] [ | ]; simpl; trivial; discriminate.
 - intros [ | ] [ | ] [ | ]; simpl; trivial; discriminate.
 - intros [ | ] [ | ]; simpl; trivial.
-Defined.
-
-Definition Onat : Oset.Rcd nat.
-split with Nat.compare.
-(* 1/3 *)
-intros a1 a2; case_eq (Nat.compare a1 a2); intro H12.
-rewrite (nat_compare_eq _ _ H12); apply refl_equal.
-rewrite <- nat_compare_lt in H12.
-intro; subst a2; apply False_rec; apply (lt_irrefl _ H12).
-rewrite <- nat_compare_gt in H12.
-intro; subst a2; apply False_rec; apply (lt_irrefl _ H12).
-(* 1/2 *)
-intros n1 n2 n3.
-case_eq (Nat.compare n1 n2); intro H12; [ intro Abs; discriminate Abs | | intro Abs; discriminate Abs].
-intros _; case_eq (Nat.compare n2 n3); intro H23; [ intro Abs; discriminate Abs | | intro Abs; discriminate Abs].
-intros _.
-rewrite <- nat_compare_lt in H12, H23.
-rewrite <- nat_compare_lt; apply lt_trans with n2; assumption.
-(* 1/1 *)
-intros a1 a2; case_eq (Nat.compare a1 a2); intro H12.
-rewrite Nat.compare_eq_iff in H12; subst a2.
-generalize (refl_equal a1); rewrite <- Nat.compare_eq_iff; intro Hn; rewrite Hn; apply refl_equal.
-rewrite <- nat_compare_lt in H12.
-assert (H21 : a2 > a1); [apply H12 | ].
-rewrite nat_compare_gt in H21; rewrite H21; apply refl_equal.
-rewrite <- nat_compare_gt in H12.
-assert (H21 : a2 < a1); [apply H12 | ].
-rewrite nat_compare_lt in H21; rewrite H21; apply refl_equal.
 Defined.
 
 Definition ON : Oset.Rcd N.
@@ -3947,32 +3717,6 @@ rewrite (Zcompare_Eq_eq _ _ H12), Z.compare_refl; apply refl_equal.
 rewrite <- Zcompare_Gt_Lt_antisym in H12; rewrite H12; apply refl_equal.
 rewrite Zcompare_Gt_Lt_antisym in H12; rewrite H12; apply refl_equal.
 Defined.
-
-Section NEmbedding.
-
-Hypothesis A : Type.
-Hypothesis N_of_A : A -> N.
-Hypothesis N_of_A_inj : forall a1 a2, N_of_A a1 = N_of_A a2 -> a1 = a2.
-
-Definition Oemb : Oset.Rcd A.
-set (compare := fun a1 a2 => N.compare (N_of_A a1) (N_of_A a2)).
-split with compare.
-(* 1/3 *)
-intros a1 a2; unfold compare; simpl.
-generalize (Ncompare_eq_correct (N_of_A a1) (N_of_A a2)).
-case (N.compare (N_of_A a1) (N_of_A a2)); intro H.
-apply N_of_A_inj; rewrite <- H; apply refl_equal.
-intro Abs; subst a2; generalize (refl_equal (N_of_A a1)); rewrite <- H; discriminate.
-intro Abs; subst a2; generalize (refl_equal (N_of_A a1)); rewrite <- H; discriminate.
-(* 1/2 *)
-intros n1 n2 n3; unfold compare; simpl; rewrite 3 nat_of_Ncompare, <- 3 nat_compare_lt; apply lt_trans.
-(* 1/1 *)
-intros n1 n2; unfold compare; simpl.
-case_eq (N.compare (N_of_A n1) (N_of_A n2)); intro A12;
-rewrite <- Ncompare_antisym, A12; apply refl_equal.
-Defined.
-
-End NEmbedding.
 
 Fixpoint string_compare s1 s2 : comparison :=
   match s1, s2 with
@@ -4123,37 +3867,6 @@ Ltac oset_compare_tac :=
             apply H1; injection H2; exact (fun h => h)]
   end.
 
-Ltac oeset_compare_tac :=
-  match goal with
-    | |- Oeset.compare ?OS ?a1 ?a1 = Eq => apply Oeset.compare_eq_refl
-    | h1 : Oeset.compare ?OS ?a1 ?a2 = Eq, 
-      h2 : Oeset.compare ?OS ?a2 ?a3 = Eq
-      |- Oeset.compare ?OS ?a1 ?a3 = Eq => apply (Oeset.compare_eq_trans _ _ _ _ h1 h2)
-    | |- Oeset.compare ?OS ?a1 ?a2 = Eq -> 
-         Oeset.compare ?OS ?a2 ?a3 = Eq -> 
-         Oeset.compare ?OS ?a1 ?a3 = Eq => apply Oeset.compare_eq_trans
-    | h1 : Oeset.compare ?OS ?a1 ?a2 = Eq,
-      h2 : Oeset.compare ?OS ?a2 ?a3 = Lt 
-      |- Oeset.compare ?OS ?a1 ?a3 = Lt => apply (Oeset.compare_eq_lt_trans _ _ _ _ h1 h2)
-    | |- Oeset.compare ?OS ?a1 ?a2 = Eq -> 
-         Oeset.compare ?OS ?a2 ?a3 = Lt ->
-         Oeset.compare ?OS ?a1 ?a3 = Lt => apply Oeset.compare_eq_lt_trans
-    | h1 : Oeset.compare ?OS ?a1 ?a2 = Lt,
-      h2 : Oeset.compare ?OS ?a2 ?a3 = Eq 
-      |- Oeset.compare ?OS ?a1 ?a3 = Lt => apply (Oeset.compare_lt_eq_trans _ _ _ _ h1 h2)
-    | |- Oeset.compare ?OS ?a1 ?a2 = Lt -> 
-         Oeset.compare ?OS ?a2 ?a3 = Eq ->
-         Oeset.compare ?OS ?a1 ?a3 = Lt => apply Oeset.compare_lt_eq_trans
-    | h1 : Oeset.compare ?OS ?a1 ?a2 = Lt,
-      h2 : Oeset.compare ?OS ?a2 ?a3 = Lt 
-      |- Oeset.compare ?OS ?a1 ?a3 = Lt => apply (Oeset.compare_lt_trans _ _ _ _ h1 h2)
-    | |- Oeset.compare ?OS ?a1 ?a2 = Lt -> 
-         Oeset.compare ?OS ?a2 ?a3 = Lt ->
-         Oeset.compare ?OS ?a1 ?a3 = Lt => apply Oeset.compare_lt_trans
-    | |- Oeset.compare ?OS ?a1 ?a2 = CompOpp (Oeset.compare ?OS ?a2 ?a1) =>
-      apply Oeset.compare_lt_gt
-  end.
-
 Ltac comparelA_tac :=
   match goal with
     | |- comparelA ?comp ?a1 ?a2 = Eq ->
@@ -4174,34 +3887,6 @@ Ltac comparelA_tac :=
       apply comparelA_lt_trans; do 6 intro
     | |- comparelA ?comp ?a1 ?a2 = CompOpp (comparelA ?comp ?a2 ?a1) =>
       apply comparelA_lt_gt; do 4 intro
-  end.
-
-Ltac comparelA_eq_bool_ok_tac :=
-  match goal with
-    | |- match comparelA ?comp ?x1 ?x2 with
-           | Eq => ?f ?x1 = ?f ?x2
-           | Lt => ?f ?x1 <> ?f ?x2
-           | Gt => ?f ?x1 <> ?f ?x2
-         end =>
-      let Aux := fresh "Aux" in
-      assert (Aux : forall a1 a2,
-                      List.In a1 x1 ->
-                      List.In a2 x2 ->
-                      match comp a1 a2 with
-                        | Eq => a1 = a2
-                        | Lt => a1 <> a2
-                        | Gt => a1 <> a2
-                      end); 
-        [do 4 intro 
-        | generalize (comparelA_eq_bool_ok _ x1 x2 Aux);
-          case (comparelA comp x1 x2);
-          [apply f_equal
-          | let H1 := fresh in
-            let H2 := fresh in
-            intros H1 H2; apply H1; injection H2; exact (fun h => h)
-          | let H1 := fresh in
-            let H2 := fresh in
-            intros H1 H2; apply H1; injection H2; exact (fun h => h)]]
   end.
 
 Ltac compareAB_tac :=
@@ -4336,124 +4021,3 @@ Ltac compareAB_eq_bool_ok_tac :=
         destruct x2 as [a2 b2];
         apply compareAB_eq_bool_ok
   end.
-
-
-(* A total order on floating point numbers *)
-
-Require Import Floats.
-
-
-Definition float_compare (f1 f2:float) :=
-  match Prim2SF f1, Prim2SF f2 with
-  | S754_zero s1, S754_zero s2 => Oset.compare Obool s1 s2
-  | S754_zero _, _ => Lt
-  | S754_infinity _, S754_zero _ => Gt
-  | S754_infinity s1, S754_infinity s2 => Oset.compare Obool s1 s2
-  | S754_infinity _, _ => Lt
-  | S754_nan, S754_finite _ _ _ => Lt
-  | S754_nan, S754_nan => Eq
-  | S754_nan, _ => Gt
-  | S754_finite s1 m1 e1, S754_finite s2 m2 e2 =>
-    match Oset.compare Obool s1 s2 with
-    | Eq => match Pos.compare m1 m2 with
-            | Eq => Z.compare e1 e2
-            | c => c
-            end
-    | c => c
-    end
-  | S754_finite _ _ _, _ => Gt
-  end.
-
-
-Definition Ofloat : Oset.Rcd float.
-  split with float_compare; unfold float_compare.
-  - intros f1 f2.
-    case_eq (Prim2SF f1); [intros s1|intros s1| |intros s1 m1 e1]; intro Heq1.
-    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2;
-        try (intro H; subst f2; now rewrite Heq1 in Heq2).
-      case_eq (Oset.compare Obool s1 s2); intro Hc;
-        try (intro H; subst f2; rewrite Heq1 in Heq2; inversion Heq2; subst s2;
-             now rewrite Oset.compare_eq_refl in Hc).
-      apply Prim2SF_inj. rewrite Heq1, Heq2.
-      rewrite Oset.compare_eq_iff in Hc. now subst s1.
-    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2;
-        try (intro H; subst f2; now rewrite Heq1 in Heq2).
-      case_eq (Oset.compare Obool s1 s2); intro Hc;
-        try (intro H; subst f2; rewrite Heq1 in Heq2; inversion Heq2; subst s2;
-             now rewrite Oset.compare_eq_refl in Hc).
-      apply Prim2SF_inj. rewrite Heq1, Heq2.
-      rewrite Oset.compare_eq_iff in Hc. now subst s1.
-    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2;
-        try (intro H; subst f2; now rewrite Heq1 in Heq2).
-      apply Prim2SF_inj. now rewrite Heq1, Heq2.
-    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2;
-        try (intro H; subst f2; now rewrite Heq1 in Heq2).
-      case_eq (Oset.compare Obool s1 s2); intro Hc;
-        try (intro H; subst f2; rewrite Heq1 in Heq2; inversion Heq2; subst s2;
-             now rewrite Oset.compare_eq_refl in Hc).
-      rewrite Oset.compare_eq_iff in Hc. subst s2.
-      case_eq ((m1 ?= m2)%positive); intro Hc;
-        try (intro H; subst f2; rewrite Heq1 in Heq2; inversion Heq2; subst e2 m2;
-             now rewrite Pos.compare_refl in Hc).
-      apply Pos.compare_eq in Hc. subst m2.
-      case_eq ((e1 ?= e2)%Z); intro Hc;
-        try (intro H; subst f2; rewrite Heq1 in Heq2; inversion Heq2; subst e2;
-             now rewrite Z.compare_refl in Hc).
-      apply Z.compare_eq in Hc. subst e2.
-      apply Prim2SF_inj. now rewrite Heq1, Heq2.
-  - intros f1 f2 f3. case_eq (Prim2SF f1); [intros s1|intros s1| |intros s1 m1 e1]; intro Heq1.
-    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2;
-        try (intros _; case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto;
-             discriminate).
-      intro Hs. case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto.
-      revert Hs. now apply Oset.compare_lt_trans.
-    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2;
-        try (intros _; case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto;
-             discriminate);
-        try discriminate.
-      intro Hs. case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto.
-      revert Hs. now apply Oset.compare_lt_trans.
-    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2;
-        try (intros _; case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto;
-             discriminate);
-        try discriminate.
-    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2;
-        try (intros _; case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto;
-             discriminate);
-        try discriminate.
-      case_eq (Oset.compare Obool s1 s2); intro Hs; try discriminate.
-      * {
-          rewrite Oset.compare_eq_iff in Hs. subst s2.
-          case_eq ((m1 ?= m2)%positive); intro Hm; try discriminate.
-          - apply Pos.compare_eq in Hm. subst m2. intro He.
-            case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto.
-            case_eq (Oset.compare Obool s1 s3); try discriminate; auto.
-            intro Hs. rewrite Oset.compare_eq_iff in Hs. subst s3.
-            case_eq ((m1 ?= m3)%positive); try discriminate; auto.
-            intro Hm. apply Pos.compare_eq in Hm. subst m3. revert He.
-            now apply Zcompare_Lt_trans.
-          - intros _. case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto.
-            case_eq (Oset.compare Obool s1 s3); try discriminate; auto.
-            intro Hs. rewrite Oset.compare_eq_iff in Hs. subst s3.
-            case_eq ((m2 ?= m3)%positive); try discriminate; auto.
-            + intro Hm2. apply Pos.compare_eq in Hm2. subst m3. intro He. now rewrite Hm.
-            + intros Hm2 _. replace ((m1 ?= m3)%positive) with Lt; auto.
-              symmetry. revert Hm Hm2. rewrite !Pos.compare_lt_iff. lia.
-        }
-      * {
-          intros _. case_eq (Prim2SF f3); [intros s3|intros s3| |intros s3 m3 e3]; intro Heq3; auto.
-          case_eq (Oset.compare Obool s2 s3); try discriminate.
-          - intro Hs2. rewrite Oset.compare_eq_iff in Hs2. subst s3. now rewrite Hs.
-          - intros Hs2 _. now rewrite (Oset.compare_lt_trans _ _ _ _ Hs Hs2).
-        }
-  - intros f1 f2. case_eq (Prim2SF f1); [intros s1|intros s1| |intros s1 m1 e1]; intro Heq1.
-    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2; auto.
-      now apply Oset.compare_lt_gt.
-    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2; auto.
-      now apply Oset.compare_lt_gt.
-    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2; auto.
-    + case_eq (Prim2SF f2); [intros s2|intros s2| |intros s2 m2 e2]; intro Heq2; auto.
-      rewrite (Oset.compare_lt_gt _ s1 s2). case (Oset.compare Obool s2 s1); auto.
-      simpl. rewrite (Pos.compare_antisym m1 m2). case ((m1 ?= m2)%positive); auto.
-      simpl. apply Z.compare_antisym.
-Defined.

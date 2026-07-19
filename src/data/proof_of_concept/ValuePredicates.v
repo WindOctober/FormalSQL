@@ -12,7 +12,7 @@
 (************************************************************************************)
 
 Require Import ZArith String List.
-Require Import OrderedSet Bool3.
+Require Import OrderedSet Bool3 ValueTemporal.
 Require Export ValueCore ValueDomain.
 
 Module NullPredicates.
@@ -51,6 +51,16 @@ Definition timestamptz_order_value v :=
   | _ => None
   end.
 
+(** PostgreSQL's SQL Boolean btree order is [false < true].  The library's
+    generic [Obool] carrier order is intentionally the reverse, so SQL
+    predicates must not reuse it. *)
+Definition sql_bool_compare b1 b2 :=
+  match b1, b2 with
+  | false, false | true, true => Eq
+  | false, true => Lt
+  | true, false => Gt
+  end.
+
 Definition order_value_compare v1 v2 :=
   match integral_order_value v1, integral_order_value v2 with
   | Some z1, Some z2 => Some (Z.compare z1 z2)
@@ -66,7 +76,15 @@ Definition order_value_compare v1 v2 :=
         | _, _ =>
           match timestamptz_order_value v1, timestamptz_order_value v2 with
           | Some z1, Some z2 => Some (Z.compare z1 z2)
-          | _, _ => None
+          | _, _ =>
+            match v1, v2 with
+            | Value_bool (Some b1), Value_bool (Some b2) =>
+                Some (sql_bool_compare b1 b2)
+            | Value_string (typmod1, Some s1),
+              Value_string (typmod2, Some s2) =>
+                Some (sql_string_compare typmod1 s1 typmod2 s2)
+            | _, _ => None
+            end
           end
         end
       end
@@ -75,7 +93,7 @@ Definition order_value_compare v1 v2 :=
 
 Definition interp_predicate p :=
   match p with
-    | Predicate "<" =>
+    | PredicateLt =>
       fun l =>
         match l with
           | v1 :: v2 :: nil =>
@@ -91,21 +109,62 @@ Definition interp_predicate p :=
             end
           | _ => unknown3
         end
-    | Predicate "<." =>
+    | PredicateFloatLt =>
       fun l =>
         match l with
           | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
             if float32_ltb a1 a2 then true3 else false3
           | _ => unknown3
         end
-    | Predicate "<_double" =>
+    | PredicateDoubleLt =>
       fun l =>
         match l with
           | Value_double (Some a1) :: Value_double (Some a2) :: nil =>
             if float64_ltb a1 a2 then true3 else false3
           | _ => unknown3
         end
-    | Predicate "<=" =>
+    (** PostgreSQL's cross-type operator calls
+        [date_cmp_timestamp_internal], not the checked DATE-to-TIMESTAMP cast.
+        The predicate itself is total; SQL NULL and ill-typed observations
+        produce UNKNOWN, while the error-aware evaluator independently
+        propagates any child-expression error before invoking it. *)
+    | PredicateDateLtTimestamp =>
+      fun l =>
+        match l with
+          | Value_date (Some date) ::
+            Value_timestamp (Some timestamp) :: nil =>
+              if date_lt_timestamp_bool date timestamp
+              then true3 else false3
+          | _ => unknown3
+        end
+    | PredicateDateLteTimestamp =>
+      fun l =>
+        match l with
+          | Value_date (Some date) ::
+            Value_timestamp (Some timestamp) :: nil =>
+              if date_lte_timestamp_bool date timestamp
+              then true3 else false3
+          | _ => unknown3
+        end
+    | PredicateDateGtTimestamp =>
+      fun l =>
+        match l with
+          | Value_date (Some date) ::
+            Value_timestamp (Some timestamp) :: nil =>
+              if date_gt_timestamp_bool date timestamp
+              then true3 else false3
+          | _ => unknown3
+        end
+    | PredicateDateGteTimestamp =>
+      fun l =>
+        match l with
+          | Value_date (Some date) ::
+            Value_timestamp (Some timestamp) :: nil =>
+              if date_gte_timestamp_bool date timestamp
+              then true3 else false3
+          | _ => unknown3
+        end
+    | PredicateLte =>
       fun l =>
         match l with
           | v1 :: v2 :: nil =>
@@ -121,21 +180,21 @@ Definition interp_predicate p :=
             end
           | _ => unknown3
         end
-    | Predicate "<=." =>
+    | PredicateFloatLte =>
       fun l =>
         match l with
           | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
             if float32_leb a1 a2 then true3 else false3
           | _ => unknown3
         end
-    | Predicate "<=_double" =>
+    | PredicateDoubleLte =>
       fun l =>
         match l with
           | Value_double (Some a1) :: Value_double (Some a2) :: nil =>
             if float64_leb a1 a2 then true3 else false3
           | _ => unknown3
         end
-    | Predicate ">" =>
+    | PredicateGt =>
       fun l =>
         match l with
           | v1 :: v2 :: nil =>
@@ -151,21 +210,21 @@ Definition interp_predicate p :=
             end
           | _ => unknown3
         end
-    | Predicate ">." =>
+    | PredicateFloatGt =>
       fun l =>
         match l with
           | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
             if float32_ltb a2 a1 then true3 else false3
           | _ => unknown3
         end
-    | Predicate ">_double" =>
+    | PredicateDoubleGt =>
       fun l =>
         match l with
           | Value_double (Some a1) :: Value_double (Some a2) :: nil =>
             if float64_ltb a2 a1 then true3 else false3
           | _ => unknown3
         end
-    | Predicate ">=" =>
+    | PredicateGte =>
       fun l =>
         match l with
           | v1 :: v2 :: nil =>
@@ -181,21 +240,21 @@ Definition interp_predicate p :=
             end
           | _ => unknown3
         end
-    | Predicate ">=." =>
+    | PredicateFloatGte =>
       fun l =>
         match l with
           | Value_float (Some a1) :: Value_float (Some a2) :: nil =>
             if float32_leb a2 a1 then true3 else false3
           | _ => unknown3
         end
-    | Predicate ">=_double" =>
+    | PredicateDoubleGte =>
       fun l =>
         match l with
           | Value_double (Some a1) :: Value_double (Some a2) :: nil =>
             if float64_leb a2 a1 then true3 else false3
           | _ => unknown3
         end
-    | Predicate "=" =>
+    | PredicateEq =>
       fun l =>
         match l with
           | v1 :: v2 :: nil =>
@@ -210,14 +269,12 @@ Definition interp_predicate p :=
                 if float32_eqb a1 a2 then true3 else false3
               | Value_double (Some a1), Value_double (Some a2) =>
                 if float64_eqb a1 a2 then true3 else false3
-              | Value_string (Some s1), Value_string (Some s2) =>
-                match string_compare s1 s2 with Eq => true3 | _ => false3 end
               | _, _ => unknown3
             end
             end
           | _ => unknown3
         end
-    | Predicate "<>" =>
+    | PredicateNeq =>
       fun l =>
         match l with
           | v1 :: v2 :: nil =>
@@ -232,34 +289,50 @@ Definition interp_predicate p :=
                 if float32_eqb a1 a2 then false3 else true3
               | Value_double (Some a1), Value_double (Some a2) =>
                 if float64_eqb a1 a2 then false3 else true3
-              | Value_string (Some s1), Value_string (Some s2) =>
-                match string_compare s1 s2 with Eq => false3 | _ => true3 end
               | _, _ => unknown3
             end
             end
           | _ => unknown3
         end
-    | Predicate "is_null" =>
+    | PredicateLikePrefix =>
+      fun l =>
+        match l with
+          | Value_string (input_typmod, Some input) ::
+            Value_string (_, Some prefix) :: nil =>
+              if string_like_prefix input_typmod input prefix
+              then true3 else false3
+          | _ => unknown3
+        end
+    | PredicateLikePercent =>
+      fun l =>
+        match l with
+          | Value_string (input_typmod, Some input) ::
+            Value_string (_, Some pattern) :: nil =>
+              if string_like_percent input_typmod input pattern
+              then true3 else false3
+          | _ => unknown3
+        end
+    | PredicateIsNull =>
       fun l =>
         match l with
           | v :: nil => if is_null_value v then true3 else false3
           | _ => unknown3
         end
-    | Predicate "is_not_null" =>
+    | PredicateIsNotNull =>
       fun l =>
         match l with
           | v :: nil => if is_null_value v then false3 else true3
           | _ => unknown3
         end
-    | Predicate "is_true" =>
+    | PredicateIsTrue =>
       fun l =>
         match l with
           | Value_bool (Some true) :: nil => true3
           | Value_bool (Some false) :: nil => false3
-          | Value_bool None :: nil => unknown3
+          | Value_bool None :: nil => false3
           | _ => unknown3
         end
-    | Predicate "is_not_true" =>
+    | PredicateIsNotTrue =>
       fun l =>
         match l with
           | Value_bool (Some true) :: nil => false3
@@ -267,15 +340,15 @@ Definition interp_predicate p :=
           | Value_bool None :: nil => true3
           | _ => unknown3
         end
-    | Predicate "is_false" =>
+    | PredicateIsFalse =>
       fun l =>
         match l with
           | Value_bool (Some false) :: nil => true3
           | Value_bool (Some true) :: nil => false3
-          | Value_bool None :: nil => unknown3
+          | Value_bool None :: nil => false3
           | _ => unknown3
         end
-    | Predicate "is_not_false" =>
+    | PredicateIsNotFalse =>
       fun l =>
         match l with
           | Value_bool (Some false) :: nil => false3
@@ -283,7 +356,7 @@ Definition interp_predicate p :=
           | Value_bool None :: nil => true3
           | _ => unknown3
         end
-    | Predicate "is_not_distinct_from" =>
+    | PredicateIsNotDistinctFrom =>
       fun l =>
         match l with
           | v1 :: v2 :: nil =>
@@ -294,7 +367,6 @@ Definition interp_predicate p :=
                    else if same_non_null_value v1 v2 then true3 else false3
           | _ => unknown3
         end
-   | _ => fun _ => unknown3
   end.
 
 

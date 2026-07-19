@@ -40,7 +40,7 @@ Fixpoint interp_funterm env t :=
   match t with
     | F_Constant _ c => c
     | F_Dot _ a => interp_dot env a
-    | F_Expr _ f l => interp_symbol T f (List.map (fun x => interp_funterm env x) l)
+    | F_Expr _ f l => interp_scalar_operator T f (List.map (fun x => interp_funterm env x) l)
   end.
 
     
@@ -87,7 +87,7 @@ Fixpoint interp_aggterm (env : env T) (agt : aggterm T) :=
           | Some (slc1 :: env'') => map (fun slc => slc :: env'') (unfold_env_slice slc1)
         end in
         interp_aggregate T ag (List.map (fun e => interp_funterm e ft) lenv)
-  | A_fun _ f lag => interp_symbol T f (List.map (fun x => interp_aggterm env x) lag)
+  | A_fun _ f lag => interp_scalar_operator T f (List.map (fun x => interp_aggterm env x) lag)
   end.
 
 Lemma interp_dot_unfold :
@@ -109,7 +109,7 @@ Lemma interp_funterm_unfold :
   match t with
     | F_Constant _ c => c
     | F_Dot _ a => interp_dot env a
-    | F_Expr _ f l => interp_symbol T f (List.map (fun x => interp_funterm env x) l)
+    | F_Expr _ f l => interp_scalar_operator T f (List.map (fun x => interp_funterm env x) l)
   end.
 Proof.
 intros env t; case t; intros; apply refl_equal.
@@ -149,7 +149,7 @@ Lemma interp_aggterm_unfold :
           | Some (slc1 :: env'') => map (fun slc => slc :: env'') (unfold_env_slice slc1)
         end in
         interp_aggregate T ag (List.map (fun e => interp_funterm e ft) lenv)
-  | A_fun _ f lag => interp_symbol T f (List.map (fun x => interp_aggterm env x) lag)
+  | A_fun _ f lag => interp_scalar_operator T f (List.map (fun x => interp_aggterm env x) lag)
   end.
 Proof.
 intros env ag; case ag; intros; apply refl_equal.
@@ -432,9 +432,9 @@ set (n := size_funterm T f).
 assert (Hn := le_n n); unfold n at 1 in Hn; clearbody n.
 revert f Hn; induction n as [ | n]; intros f Hn g Hf Hg; [destruct f; inversion Hn | ].
 destruct f as [c | a | fc lf]; [apply refl_equal | | ]; simpl in Hf.
-- apply Hg; rewrite Oset.mem_bool_true_iff in Hf; assumption.
-- case_eq (Oset.mem_bool (OFun T) (F_Expr T fc lf) g); intro Kf.
-  + apply Hg; rewrite Oset.mem_bool_true_iff in Kf; assumption.
+- apply Hg; rewrite funterm_mem_true_iff in Hf; assumption.
+- case_eq (funterm_mem (F_Expr T fc lf) g); intro Kf.
+  + apply Hg; rewrite funterm_mem_true_iff in Kf; assumption.
   + rewrite Kf, Bool.Bool.orb_false_l in Hf; simpl; apply f_equal; rewrite <- map_eq.
     intros e He; apply IHn with g.
     * simpl in Hn; refine (le_trans _ _ _ _ (le_S_n _ _ Hn)).

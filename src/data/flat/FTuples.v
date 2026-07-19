@@ -13,7 +13,8 @@
 
 Require Import List Bool Arith NArith.
 Require Import BasicTacs BasicFacts Bool3 ListFacts ListSort ListPermut
-        OrderedSet Partition FiniteSet FiniteBag FiniteCollection Join.
+        OrderedSet DecidableEquality Partition FiniteSet FiniteBag
+        FiniteCollection Join.
 
 (* 
 Flata data are tuples.
@@ -24,12 +25,13 @@ Module Tuple.
 Record Rcd : Type :=
   mk_R
     {
-    (** Basic ingredients, predicates, symbols, aggregates, attributes, domains and values *)
+    (** Basic ingredients: predicates, scalar operators, aggregates, attributes,
+        domains, and values. *)
     type : Type;
     attribute : Type;
     value : Type;
     predicate : Type;
-    symbol : Type;
+    scalar_operator : Type;
     aggregate : Type;
     (** Abstract tuples *)
     tuple : Type;
@@ -40,9 +42,8 @@ Record Rcd : Type :=
     A : Fset.Rcd OAtt;
     OVal : Oset.Rcd value;
     FVal : Fset.Rcd OVal;
-    OPred : Oset.Rcd predicate;
-    OSymb : Oset.Rcd symbol;
-    OAgg : Oset.Rcd aggregate;
+    scalar_operator_eq_dec : EqDec.t scalar_operator;
+    aggregate_eq_dec : EqDec.t aggregate;
     OTuple : Oeset.Rcd tuple;
     CTuple : Fecol.Rcd OTuple;
     (** Typing attributes and values. *)
@@ -54,8 +55,9 @@ Record Rcd : Type :=
     mk_tuple : Fset.set A -> (attribute -> value) -> tuple;
     (** Interpretation *)
     B : Bool.Rcd;
+    predicate_arity : predicate -> nat;
     interp_predicate : predicate -> list value -> Bool.b B;
-    interp_symbol : symbol -> list value -> value;
+    interp_scalar_operator : scalar_operator -> list value -> value;
     interp_aggregate : aggregate -> list value -> value;
     (** Properties *)
     labels_mk_tuple : forall s f, labels (mk_tuple s f) =S= s;

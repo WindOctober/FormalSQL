@@ -35,7 +35,16 @@ Record sort_key : Type :=
     {
       sort_key_attribute : attribute;
       sort_key_direction : sort_direction;
-      sort_key_null_direction : null_direction
+      sort_key_null_direction : null_direction;
+      (** SQL order is a semantic operation, not the structural [OVal] order
+          used to implement finite collections.  Store the comparison chosen
+          by the concrete SQL value model together with the symmetry law used
+          by the generic list-order facts. *)
+      sort_key_value_compare : value -> value -> comparison;
+      sort_key_value_compare_opposite :
+        forall left right,
+          sort_key_value_compare left right =
+          CompOpp (sort_key_value_compare right left)
     }.
 
 Definition reverse_comparison (c : comparison) :=
@@ -47,6 +56,7 @@ Definition reverse_comparison (c : comparison) :=
 
 Definition compare_order_value
     (value_is_null : value -> bool)
+    (value_compare : value -> value -> comparison)
     (direction : sort_direction)
     (nulls : null_direction)
     (left right : value) :=
@@ -64,8 +74,8 @@ Definition compare_order_value
       end
   | false, false =>
     match direction with
-    | Sort_Asc => Oset.compare (OVal T) left right
-    | Sort_Desc => reverse_comparison (Oset.compare (OVal T) left right)
+    | Sort_Asc => value_compare left right
+    | Sort_Desc => reverse_comparison (value_compare left right)
     end
   end.
 
@@ -75,6 +85,7 @@ Definition compare_order_key
     (left right : tuple) :=
   compare_order_value
     value_is_null
+    (sort_key_value_compare key)
     (sort_key_direction key)
     (sort_key_null_direction key)
     (dot T left (sort_key_attribute key))

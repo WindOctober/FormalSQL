@@ -44,6 +44,10 @@ Parameter raw_float64_of : float64 -> raw_float64.
 
 Parameter float32_is_nan : float32 -> bool.
 Parameter float64_is_nan : float64 -> bool.
+Parameter float32_is_infinite : float32 -> bool.
+Parameter float64_is_infinite : float64 -> bool.
+Parameter float32_is_zero : float32 -> bool.
+Parameter float64_is_zero : float64 -> bool.
 Parameter Ofloat32 : Oset.Rcd float32.
 Parameter Ofloat64 : Oset.Rcd float64.
 
@@ -144,6 +148,20 @@ Definition float32_is_nan (f : float32) : bool :=
 
 Definition float64_is_nan (f : float64) : bool :=
   match f with Float64NaN_ => true | Float64Bits_ _ => false end.
+
+Definition float32_is_infinite (f : float32) : bool :=
+  andb (negb (float32_is_nan f))
+       (negb (Binary.is_finite 24 128 (raw_float32_of f))).
+
+Definition float64_is_infinite (f : float64) : bool :=
+  andb (negb (float64_is_nan f))
+       (negb (Binary.is_finite 53 1024 (raw_float64_of f))).
+
+Definition float32_is_zero (f : float32) : bool :=
+  raw_float32_is_zero (raw_float32_of f).
+
+Definition float64_is_zero (f : float64) : bool :=
+  raw_float64_is_zero (raw_float64_of f).
 
 Definition float32_negative_sign_bit : Z := 2147483648.
 Definition float64_negative_sign_bit : Z := 9223372036854775808.

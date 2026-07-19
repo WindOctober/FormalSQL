@@ -573,10 +573,6 @@ Inductive bst : tree -> Prop :=
   | BSNode : forall x l r h, bst l -> bst r ->
      lt_tree x l -> gt_tree x r -> bst (Node l x r h).
 
-(** [bst] is the (decidable) invariant our trees will have to satisfy. *)
-
-Definition IsOk := bst.
-
 Class Ok (s : tree) : Prop := ok : bst s.
 
 Instance bst_Ok s (Hs : bst s) : Ok s := { ok := Hs }.
@@ -609,10 +605,6 @@ Fixpoint isok s :=
 
 
 (** * Correctness proofs *)
-
-(** * Automation and dedicated tactics *)
-
-Scheme tree_ind2 := Induction for tree Sort Prop.
 
 Create HintDb datacert.
 
@@ -3188,13 +3180,6 @@ Local Unset Case Analysis Schemes.
 Arguments Mkt this {is_ok}.
 Hint Resolve is_ok : typeclass_instances.
 
-Definition In_ (x : elt)(s : set) := In x s.(this).
-Definition Equal_ (s s' : set) := forall a : elt, In_ a s <-> In_ a s'.
-Definition Subset_ (s s' : set) := forall a : elt, In_ a s -> In_ a s'.
-Definition Empty_ (s : set) := forall a : elt, ~ In_ a s.
-Definition For_all_ (P : elt -> Prop)(s : set) := forall x, In_ x s -> P x.
-Definition Exists_ (P : elt -> Prop)(s : set) := exists x, In_ x s /\ P x.
-
 Definition mem_ (x : elt)(s : set) := mem x s.(this).
 Definition add_ (x : elt)(s : set) : set := Mkt (add x s.(this)).
 Definition remove_ (x : elt)(s : set) : set := Mkt (remove x s.(this)).
@@ -3215,7 +3200,6 @@ Definition for_all_ (f : elt -> bool) (s : set) := for_all f s.(this).
 Definition exists__ (f : elt -> bool) (s : set) := exists_ f s.(this).
 Definition partition_ (f : elt -> bool) (s : set) : set * set :=
  let p := partition f s.(this) in (Mkt (fst p), Mkt (snd p)).
-Definition eq_ : set -> set -> Prop := Equal_.
 Definition compare_ (s s' : set) : comparison := compare s.(this) s'.(this).
 
 Instance eq_equiv_ : Equivalence (fun s s' : set => equal_ s s' = true).

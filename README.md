@@ -9,17 +9,42 @@ preserving the original formal semantics.
 
 
 ## Compilation
-The upstream version compiles with Coq 8.11.2:
-```
-make
-make install
-```
-
 The `master` branch is currently tested with Rocq 9.2:
 ```
-cd src
-opam exec --switch=../.opam-rocq -- make -f Makefile.rocq -j1
+opam exec --switch=/path/to/rocq-switch -- make JOBS=1
 ```
+
+The top-level makefile regenerates `src/Makefile.rocq` from `_CoqProject` when
+needed; no generated Rocq makefile is version-controlled.
+
+## Exact declarative PostgreSQL query extensions
+
+The Logos fork contains an exact ordered row-list query semantics whose
+`QExpr_Bag` constructor embeds the existing deterministic bag algebra for
+order-insensitive fragments. There is no second normalized query syntax or
+evaluator. Query meaning is independent of planner and executor choices.
+Logical filtering, joins, grouping, grouping sets,
+order-preserving deterministic row mapping, duplicate elimination, ordering,
+offset, and fetch are compositional at every nesting depth. Rank and cumulative
+window semantics range over every ordering permitted by the SQL partition and
+order keys. Runtime errors are SQL
+expression-level outcomes of that logical structure, never observations of a
+particular execution plan.
+
+PostgreSQL fixed-scale NUMERIC AVG is represented by one aggregate-owned
+`numeric_avg_scale_state`, not by composing SUM, a checked COUNT, and scalar
+division. `avg_numeric_scale_2` serves every schema-authoritative
+`DECIMAL(p,2)` input: declared precision is enforced by schema conformance and
+does not alter the transition. It retains exact nonnegative counters and an
+exact fixed-scale coefficient sum, with numeric range/division errors delayed
+until aggregate finalization.
+
+`src/data/sql/SqlQueryWellFormed.v` states the conservative schema, ordering,
+join-projection, and positional-IN obligations directly on the exact query
+syntax. `src/data/sql/SqlQueryFacts.v` proves reusable ordered/list and
+possible-bag bridges. No frontend correctness is inferred from these
+theorems: emitters must separately justify PostgreSQL typing and declarative
+SQL translation.
 
 
 ## License

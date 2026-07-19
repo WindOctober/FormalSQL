@@ -1425,15 +1425,6 @@ rewrite nb_occ_mk_bag, Oeset.nb_occ_filter, nb_occ_elements.
   + intros _; destruct p; discriminate.
 Qed.
 
-Definition OBag : Oeset.Rcd (bag BA).
-split with (compare BA).
-- apply compare_eq_trans.
-- apply compare_eq_lt_trans.
-- apply compare_lt_eq_trans.
-- apply compare_lt_trans.
-- apply compare_lt_gt.
-Defined.
-
 Lemma mem_union_max :
   forall x b1 b2, mem x (union_max BA b1 b2) = mem x b1 || mem x b2.
 Proof.

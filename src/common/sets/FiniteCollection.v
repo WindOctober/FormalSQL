@@ -156,12 +156,6 @@ Definition fold (B : Type) (f : A -> B -> B) c b0 :=
     | Fbag b => Febag.fold BA f b b0
   end.
 
-Definition app_col f fs fb c :=
-  match f, c with
-    | FlagSet, _ => Fset (fs (to_set c))
-    | FlagBag, _ => Fbag (fb (to_bag c))
-  end.
-
 Definition app_col2 f fs fb c1 c2 :=
   match f, c1, c2 with
     | FlagSet, _, _ => Fset (fs (to_set c1) (to_set c2))
@@ -1342,4 +1336,3 @@ Notation "s1 'unionCE' f s2" := (Fecol.union f s1 s2) (at level 70, no associati
 Notation "s1 'interCE' f s2" := (Fecol.inter f s1 s2) (at level 70, no associativity).
 Notation "'emptyCE' f" := (Fecol.empty _ f) (at level 70, no associativity).
 Notation "a 'addCE' s" := (Fecol.add a s) (at level 70, no associativity).
-

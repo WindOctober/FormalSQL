@@ -309,35 +309,6 @@ End Sec.
 
 End Bool.
 
-Definition Bool2 : Bool.Rcd.
-split with bool true false andb orb negb (fun b => b).
-- discriminate.
-- intro; apply refl_equal.
-- intro; apply refl_equal.
-- intros b1 b2; split.
-  + case b1; simpl; [ | intro H; discriminate H].
-    exact (fun h => conj (refl_equal _) h).
-  + intros [H1 H2]; subst; apply refl_equal.
-- intros b1 b2; split.
-  + case b1; [ | refine (fun _ => or_introl _ (refl_equal _))].
-    exact (fun h => or_intror _ h).
-  + intros [H1 | H2]; subst; simpl; [trivial | ].
-    apply Bool.andb_false_r.
-- intro; apply refl_equal.
-- intro; apply refl_equal.
-- intros b1 b2; rewrite Bool.Bool.orb_true_iff; exact (conj (fun h => h) (fun h => h)).
-- intros b1 b2; rewrite Bool.Bool.orb_false_iff; exact (conj (fun h => h) (fun h => h)).
-- apply refl_equal.
-- apply refl_equal.
-- intros b1 b2; rewrite Bool.Bool.negb_andb; apply refl_equal.
-- intro; apply Bool.negb_involutive.
-- intros; apply Bool.Bool.andb_comm.
-- intros; apply Bool.Bool.andb_assoc.
-- intros; apply Bool.Bool.orb_comm.
-- intros; apply Bool.Bool.orb_assoc.
-- intro; split; exact (fun h => h).
-Defined.
-
 Inductive bool3 : Type := true3 | false3 | unknown3.
 
 Definition andb3 b1 b2 :=
@@ -494,4 +465,3 @@ intros A f l; induction l as [ | a1 l]; split; intro H.
     case_eq (f a1); intro Ha1; simpl; trivial.
     apply False_rec; apply (H a1); [left | ]; trivial.
 Qed.
-

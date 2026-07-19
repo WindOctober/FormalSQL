@@ -34,24 +34,11 @@ split with (fun r1 r2 => match r1, r2 with Rel s1, Rel s2 => Oset.compare Ostrin
 - intros [s1] [s2]; apply Oset.compare_lt_gt.
 Defined.
 
-
-(* (** ** Definition of variable names *) *)
-(* Inductive varname : Set := VarN : N -> varname. *)
-
-(* Definition VarN_of_N := VarN. *)
-(* Definition N_of_VarN : varname -> N :=  *)
-(*  fun a => match a with VarN n => n end. *)
-
-(* Definition OVN : Oset.Rcd varname. *)
-(* apply Oemb with N_of_VarN. *)
-(* intros [a1] [a2] H; simpl in H; apply f_equal; assumption. *)
-(* Defined. *)
-
 (** * Definition of attributes, and finite sets of attributes *)
 
 (** There are several constructors for attributes, one for each type. This allows to have an infinite number of attributes, usefull for renaming for instance, but also to a generic function [type_of_attribute]. *)
 Inductive attribute : Set :=
-  | Attr_string : string -> attribute
+  | Attr_string : string -> string_typmod -> attribute
   | Attr_Z : string -> attribute
   | Attr_int32 : string -> attribute
   | Attr_int64 : string -> attribute
@@ -82,7 +69,7 @@ Register Attr_timestamptz as datacert.attribute.Attr_timestamptz.
 
 Definition type_of_attribute (a : attribute) :=
   match a with
-    | Attr_string _ => type_string
+    | Attr_string _ _ => type_string
     | Attr_Z _ => type_Z
     | Attr_int32 _ => type_int32
     | Attr_int64 _ => type_int64
@@ -100,7 +87,7 @@ Open Scope N_scope.
 
 Definition N_of_attribute a := 
   match a with   
-    | Attr_string _ => 0
+    | Attr_string _ _ => 0
     | Attr_Z _ => 1
     | Attr_int32 _ => 2
     | Attr_int64 _ => 3
@@ -117,7 +104,9 @@ Definition N_of_attribute a :=
 
 Definition N2_of_attribute a :=
   match a with
-    | Attr_string s
+    | Attr_string s typmod =>
+        (N_of_attribute a,
+          (s, string_typmod_descriptor typmod))
     | Attr_Z s
     | Attr_int32 s
     | Attr_int64 s
@@ -135,6 +124,18 @@ Definition N2_of_attribute a :=
 Definition attribute_compare a1 a2 :=
   compareAB N.compare (compareAB string_compare (compareAB Z.compare Z.compare))
     (N2_of_attribute a1) (N2_of_attribute a2).
+
+Lemma N2_of_attribute_injective :
+  forall a1 a2, N2_of_attribute a1 = N2_of_attribute a2 -> a1 = a2.
+Proof.
+intros a1 a2 Heq.
+destruct a1; destruct a2; cbn in Heq; try discriminate;
+  inversion Heq; subst; try reflexivity.
+f_equal.
+apply string_typmod_descriptor_injective.
+unfold string_typmod_descriptor.
+now rewrite H1, H2.
+Qed.
 
 Definition OAN : Oset.Rcd attribute.
 Proof.
@@ -155,19 +156,12 @@ split with attribute_compare.
       + apply (Oset.eq_bool_ok Ostring).
       + compareAB_eq_bool_ok_tac; apply (Oset.eq_bool_ok OZ).
   }
-  case_eq (N2_of_attribute a1); intros n1 sp1 H1;
-  case_eq (N2_of_attribute a2); intros n2 sp2 H2;
-  rewrite H1, H2 in H.
   destruct (compareAB
               N.compare (compareAB string_compare (compareAB Z.compare Z.compare))
-              (n1, sp1) (n2, sp2)).
-  + injection H; clear H; do 2 intro.
-    subst sp2 n2; rewrite <- H2 in H1.
-    destruct a1; destruct a2; (try discriminate H1) || (injection H1; intros; subst; trivial).
-  + intro Ha; apply H; rewrite <- Ha in H2; rewrite H1 in H2.
-    apply H2.
-  + intro Ha; apply H; rewrite <- Ha in H2; rewrite H1 in H2.
-    apply H2.
+              (N2_of_attribute a1) (N2_of_attribute a2)).
+  + now apply N2_of_attribute_injective.
+  + intro Ha; apply H; now subst.
+  + intro Ha; apply H; now subst.
 - intros a1 a2 a3; unfold attribute_compare.
   compareAB_tac.
   + apply (Oset.compare_eq_trans ON).
@@ -201,17 +195,6 @@ Section Sec.
 Hypothesis T : Tuple.Rcd.
 Import Tuple.
 
-Definition show_tuple t :=
-  List.map
-    (fun a => (a, dot T t a))
-    (Fset.elements _ (labels _ t)).
-
-Definition show_bag_tuples x :=
-  List.map show_tuple (Febag.elements (Fecol.CBag (CTuple T)) x).
-
-Definition show_col_tuples x :=
-  List.map show_tuple (Fecol.elements (CA := CTuple T) x).
-
 Record db_state_ : Type :=
   mk_state
     {
@@ -219,11 +202,6 @@ Record db_state_ : Type :=
       _basesort : relname -> Fset.set (A T);
       _instance : relname -> Febag.bag (Fecol.CBag (CTuple T))
     }.
-
-Definition show_state_ (db : db_state_) :=
-  (_relnames db,
-   List.map (fun r => (r, Fset.elements _ (_basesort db r))) (_relnames db),
-   List.map (fun r => (r, show_bag_tuples (_instance db r))) (_relnames db)).
 
 Definition init_db_ :=
   mk_state
@@ -245,31 +223,6 @@ Definition create_table_
        end)
     (_instance db).
 
-Definition insert_tuple_into_
-           (* old state *) db
-           (* new tuple *) tpl
-           (* table *) tbl
-            :=
-  mk_state
-    (_relnames db)
-    (_basesort db)
-    (fun x =>
-       match Oset.compare ORN x tbl with
-       | Eq => Febag.add (Fecol.CBag (CTuple T)) tpl (_instance db tbl)
-       |_ => _instance db x
-       end).
-
-Fixpoint insert_tuples_into_
-           (* old state *) db
-           (* new tuple list *) ltpl
-           (* table *) tbl :=
-  match ltpl with
-    | nil => db
-    | t :: l => insert_tuple_into_ (insert_tuples_into_ db l tbl) t tbl
-  end.
-
-(* Definition MyDBS db := DatabaseSchema.mk_R (A T) ORN (_basesort db).*)
-
 End Sec.
 
 
@@ -279,21 +232,11 @@ Definition TNull : Tuple.Rcd :=
            NullValues.type_of_value 
            NullValues.default_value 
            OAN FAN NullValues.OVal NullValues.FVal
-           predicate _ aggregate OP (OSymbol _ NullValues.OVal) OAgg Bool3.Bool3
-           NullValues.interp_predicate NullValues.interp_symbol NullValues.interp_aggregate.
+           predicate scalar_operator aggregate
+           scalar_operator_eq_dec aggregate_eq_dec Bool3.Bool3
+           ValueCore.predicate_arity
+           NullValues.interp_predicate
+           NullValues.interp_scalar_operator
+           NullValues.interp_aggregate.
 
 Register TNull as datacert.syntax.TNull.
-
-
-(* Definition TSimple (* predicate symbol aggregate  *) *)
-(*            (* (OP : Oset.Rcd predicate)  *) *)
-(*            (* (OSymb : Oset.Rcd symbol) *) *)
-(*            (* (OAgg : Oset.Rcd aggregate)  *) *)
-(*            (* interp_pred interp_symb interp_agg *) : Tuple.Rcd := *)
-(*   Tuple2.T attribute type SimpleValues.value  *)
-(*            type_of_attribute *)
-(*            SimpleValues.type_of_value *)
-(*            (fun _ => SimpleValues.NULL) *)
-(*            OAN FAN SimpleValues.OVal SimpleValues.FVal *)
-(*            predicate symbol aggregate OP OSymb OAgg Bool3.Bool2 *)
-(*            interp_pred interp_symb interp_agg. *)

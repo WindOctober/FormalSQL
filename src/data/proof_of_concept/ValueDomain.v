@@ -13,7 +13,7 @@
 
 Require Import ZArith String Bool.
 Require Import OrderedSet.
-Require Export ValueCore ValueFloat ValueInteger ValueNumericTypmod.
+Require Export ValueCore ValueFloat ValueInteger ValueNumericTypmod ValueString.
 
 Module NullValueDomain.
 
@@ -21,7 +21,7 @@ Module NullValueDomain.
     type for values.
 *)
 Inductive value : Set :=
-  | Value_string : option string -> value
+  | Value_string : string_value -> value
   | Value_Z : option Z -> value
   | Value_int32 : option int32 -> value
   | Value_int64 : option int64 -> value
@@ -69,7 +69,7 @@ match v with
 (** Default values for each type. *)
 Definition default_value d :=
   match d with
-    | type_string => Value_string None
+    | type_string => Value_string (StringValue StringText None)
     | type_Z => Value_Z None
     | type_int32 => Value_int32 None
     | type_int64 => Value_int64 None
@@ -85,7 +85,7 @@ Definition default_value d :=
 
 Definition is_null_value v :=
   match v with
-  | Value_string None
+  | Value_string (_, None)
   | Value_Z None
   | Value_int32 None
   | Value_int64 None
@@ -119,8 +119,8 @@ Definition same_non_null_value v1 v2 :=
       float64_eqb a1 a2
   | Value_numeric (Some a1), Value_numeric (Some a2) =>
       numeric_eqb a1 a2
-  | Value_string (Some s1), Value_string (Some s2) =>
-      match string_compare s1 s2 with Eq => true | _ => false end
+  | Value_string (typmod1, Some s1), Value_string (typmod2, Some s2) =>
+      sql_string_eqb typmod1 s1 typmod2 s2
   | Value_bool (Some b1), Value_bool (Some b2) =>
       Bool.eqb b1 b2
   | Value_date (Some d1), Value_date (Some d2) =>

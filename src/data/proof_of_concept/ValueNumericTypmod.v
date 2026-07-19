@@ -9,12 +9,6 @@ Require Export ValueNumeric.
 
 Open Scope Z_scope.
 
-(** PostgreSQL NUMERIC(p,s) declaration metadata, separate from runtime values. *)
-Record numeric_typmod : Set := NumericTypmod {
-  numeric_typmod_precision : Z;
-  numeric_typmod_scale : Z
-}.
-
 Definition numeric_max_precision : Z := 1000.
 Definition numeric_min_scale : Z := -1000.
 Definition numeric_max_scale : Z := 1000.
@@ -25,15 +19,18 @@ Definition numeric_typmod_valid_bool (precision scale : Z) : bool :=
   && (numeric_min_scale <=? scale)
   && (scale <=? numeric_max_scale).
 
-Definition numeric_typmod_checked (precision scale : Z) : option numeric_typmod :=
-  if numeric_typmod_valid_bool precision scale
-  then Some (NumericTypmod precision scale)
-  else None.
-
 Definition numeric_fits_typmod_bool
     (value : numeric) (precision scale : Z) : bool :=
   numeric_typmod_valid_bool precision scale
-  && (Z.abs (numeric_rounded_coeff value scale) <? Z.pow 10 precision).
+  && match value with
+     | NumericNaN => true
+     | NumericFinite _ =>
+         match numeric_rounded_coeff value scale with
+         | Some coeff => Z.abs coeff <? Z.pow 10 precision
+         | None => false
+         end
+     | NumericNegInfinity | NumericPosInfinity => false
+     end.
 
 Definition numeric_cast_typmod
     (value : numeric) (precision scale : Z) : option numeric :=

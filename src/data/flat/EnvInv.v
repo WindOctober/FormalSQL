@@ -29,21 +29,7 @@ Section Sec.
 
 Hypothesis T : Tuple.Rcd.
 
-Notation predicate := (Tuple.predicate T).
-Notation symb := (Tuple.symbol T).
-Notation aggregate := (Tuple.aggregate T).
-Notation OPredicate := (Tuple.OPred T).
-Notation OSymb := (Tuple.OSymb T).
-Notation OAggregate := (Tuple.OAgg T).
-
-Import Tuple.
-Notation value := (value T).
-Notation attribute := (attribute T).
-Notation tuple := (tuple T).
 Arguments default_tuple {T}.
-Arguments funterm {T}.
-Arguments aggterm {T}.
-Arguments Select_Star {T}.
 Arguments Select_As {T}.
 Arguments Select_List {T}.
 Arguments _Select_List {T}.
@@ -53,15 +39,6 @@ Arguments F_Dot {T}.
 Arguments A_Expr {T}.
 Arguments F_Expr {T}.
 Arguments A_agg {T}.
-(* Arguments Sql_True {T}. *)
-(* Arguments Sql_Pred {T}. *)
-(* Arguments Sql_Quant {T}. *)
-(* Arguments Sql_In {T dom}. *)
-(* Arguments Sql_Exists {T}. *)
-(* Arguments join_tuple {T}. *)
-(* Arguments default_tuple {T}. *)
-(* Arguments join_compatible_tuple {T}. *)
-(* Arguments mk_tuple {r}. *)
 Arguments interp_funterm {T}.
 Arguments projection {T}.
 Arguments env_t {T}.
@@ -73,9 +50,6 @@ Arguments well_formed_e {T}.
 Arguments find_eval_env {T}.
 Arguments find_eval_env_unfold {T}.
 Arguments is_a_suitable_env {T}.
-Notation setA := (Fset.set (A T)).
-Notation BTupleT := (Fecol.CBag (CTuple T)).
-Notation bagT := (Febag.bag BTupleT).
 
 Lemma interp_funterm_in_env_tail : 
    forall (env1 : list (_ * group_by T * _)) slc env2 f,
@@ -138,7 +112,7 @@ Lemma interp_dot_eq_env_g_strong :
      :: env) a.
 Proof.
 intros env s s' l lb g We' We'' a Ha; unfold well_formed_ft in Ha; simpl in Ha.
-rewrite Oset.mem_bool_true_iff, extract_funterms_app in Ha.
+rewrite funterm_mem_true_iff, extract_funterms_app in Ha.
 simpl in We'; rewrite !Bool.Bool.andb_true_iff, forallb_forall in We'.
 destruct We' as [[[[W1 W2] W3] W4] W5].
 simpl in We''; rewrite !Bool.Bool.andb_true_iff, !forallb_forall in We''.
@@ -183,10 +157,10 @@ case_eq (a inS? s); intro Ka.
   unfold pair_of_select; simpl.
   rewrite Oset.find_app, Oset.find_map; [ | apply Fset.mem_in_elements; assumption]; simpl.
   rewrite (Fset.mem_eq_2 _ _ _ (W3 _ Hv1)), Ka.
-  rewrite <- extract_funterms_app, in_extract_funterms, <- (Oset.mem_bool_true_iff (OAggT T)), 
-     Oset.mem_bool_app in Ha.
-  case_eq (Oset.mem_bool (OAggT T) (A_Expr (F_Dot a)) g); intro Ha'.
-  + rewrite Oset.mem_bool_true_iff in Ha'.
+  rewrite <- extract_funterms_app, in_extract_funterms,
+    <- aggterm_mem_true_iff, aggterm_mem_app in Ha.
+  case_eq (aggterm_mem (A_Expr (F_Dot a)) g); intro Ha'.
+  + rewrite aggterm_mem_true_iff in Ha'.
     generalize (_W2 _ Ha'); clear _W2; 
       intro _W2; rewrite Oset.eq_bool_true_iff in _W2; simpl in _W2.
     rewrite (Fset.mem_eq_2 _ _ _ (W3 _ Ht1)), Ka in _W2; rewrite _W2.
@@ -194,7 +168,7 @@ case_eq (a inS? s); intro Ka.
       intro __W2; rewrite Oset.eq_bool_true_iff in __W2; simpl in __W2.
     rewrite (Fset.mem_eq_2 _ _ _ (W3 _ Hv1)), Ka in __W2; rewrite __W2.
     apply refl_equal.
-  + rewrite Ha', Bool.Bool.orb_false_l, Oset.mem_bool_true_iff in Ha.
+  + rewrite Ha', Bool.Bool.orb_false_l, aggterm_mem_true_iff in Ha.
     rewrite Fset.is_empty_spec, Fset.equal_spec in W4.
     assert (Ja := W4 a); rewrite Fset.mem_inter, Ka, Bool.Bool.andb_true_l, Fset.empty_spec in Ja.
     rewrite in_flat_map in Ha.
@@ -216,12 +190,12 @@ case_eq (a inS? s); intro Ka.
                                                        | Select_As _ a1 => a1
                                                             end) s')); 
     intro Ja; [ | apply refl_equal].
-  rewrite <- extract_funterms_app, in_extract_funterms, <- (Oset.mem_bool_true_iff (OAggT T)), 
-     Oset.mem_bool_app in Ha.
-  case_eq (Oset.mem_bool (OAggT T) (A_Expr (F_Dot a)) g); intro Ha'.
-  + rewrite Oset.mem_bool_true_iff in Ha'.
+  rewrite <- extract_funterms_app, in_extract_funterms,
+    <- aggterm_mem_true_iff, aggterm_mem_app in Ha.
+  case_eq (aggterm_mem (A_Expr (F_Dot a)) g); intro Ha'.
+  + rewrite aggterm_mem_true_iff in Ha'.
     apply False_rec; generalize (W1 _ Ha'); simpl; unfold well_formed_ft; simpl.
-    rewrite Oset.mem_bool_true_iff, in_extract_funterms; intro H.
+    rewrite funterm_mem_true_iff, in_extract_funterms; intro H.
     destruct (in_app_or _ _ _ H) as [H' | H'].
     * rewrite in_map_iff in H'.
       destruct H' as [_a [_H' H']]; injection _H'; intro; subst _a.
@@ -252,7 +226,7 @@ case_eq (a inS? s); intro Ka.
       }
       rewrite Abs'; discriminate.
   + rewrite Ha', Bool.Bool.orb_false_l in Ha.
-    rewrite Oset.mem_bool_true_iff, in_flat_map in Ha.
+    rewrite aggterm_mem_true_iff, in_flat_map in Ha.
     destruct Ha as [[[sa1 g1] l1] [H1 H2]].
     destruct (in_split _ _ H1) as [e1 [e2 He]]; rewrite He in W5'.
     assert (W' := well_formed_e_tail _ _ _ W5').
@@ -344,9 +318,9 @@ assert (Hn := le_n n); unfold n at 1 in Hn; clearbody n.
 revert e Hn; induction n as [ | n]; intros f Hn Wf; [destruct f; inversion Hn | ].
 destruct f as [c | a | fc lf]; [apply refl_equal | apply interp_dot_eq_env_g_strong; trivial | ].
 unfold well_formed_ft in Wf; simpl in Wf.
-case_eq (Oset.mem_bool (OFun T) (F_Expr fc lf) (extract_funterms (g ++ flat_map groups_of_env_slice env)));
+case_eq (funterm_mem (F_Expr fc lf) (extract_funterms (g ++ flat_map groups_of_env_slice env)));
   intro H; [ | rewrite H, Bool.Bool.orb_false_l in Wf].
-- rewrite Oset.mem_bool_true_iff, in_extract_funterms in H.
+- rewrite funterm_mem_true_iff, in_extract_funterms in H.
   destruct (in_app_or _ _ _ H) as [H' | H'].
   + case_eq (quicksort 
                (OTuple T) 
@@ -529,8 +503,7 @@ destruct e as [f | a f | f la].
              (map
                 (fun x =>
                    interp_funterm
-                     ((s unionS Fset.mk_set (A T) lb, Group_Fine
-                     (* Group_By (map (fun b => A_Expr (F_Dot b)) lb)*), x :: nil) :: env) f)
+                     ((s unionS Fset.mk_set (A T) lb, Group_Fine, x :: nil) :: env) f)
                 (map (fun x => 
                         projection (env_t env x) 
                                    (Select_List (_Select_List (id_renaming s ++ s')))) l)).
@@ -556,14 +529,14 @@ destruct e as [f | a f | f la].
     assert (Aux : is_a_suitable_env (s unionS Fset.mk_set (A T) lb) env (A_agg a f) = true).
     {
       unfold is_a_suitable_env in *; simpl in Jf; simpl.
-      rewrite Oset.mem_bool_app in Jf.
-      case_eq (Oset.mem_bool (OAggT T) (A_agg a f) (map (fun a => A_Expr (F_Dot a)) ({{{s}}})));
+      rewrite aggterm_mem_app in Jf.
+      case_eq (aggterm_mem (A_agg a f) (map (fun a => A_Expr (F_Dot a)) ({{{s}}})));
       intro Lf.
-      - rewrite Oset.mem_bool_true_iff, in_map_iff in Lf.      
+      - rewrite aggterm_mem_true_iff, in_map_iff in Lf.
         destruct Lf as [_a [Lf _]]; discriminate Lf.
       - rewrite Lf, Bool.Bool.orb_false_l in Jf.
-        case_eq (Oset.mem_bool (OAggT T) (A_agg a f) (flat_map groups_of_env_slice env)); intro Mf.
-        + rewrite Oset.mem_bool_app, Mf, Bool.Bool.orb_true_r; apply refl_equal.
+        case_eq (aggterm_mem (A_agg a f) (flat_map groups_of_env_slice env)); intro Mf.
+        + rewrite aggterm_mem_app, Mf, Bool.Bool.orb_true_r; apply refl_equal.
         + rewrite Mf, Bool.Bool.orb_false_l in Jf.
           rewrite Bool.Bool.orb_true_iff; right.
           revert Jf; apply is_built_upon_ft_incl; intros x Hx; rewrite in_extract_funterms in Hx.
@@ -576,13 +549,13 @@ destruct e as [f | a f | f la].
           left; apply Fset.in_elements_mem; assumption.
     }
     unfold is_a_suitable_env in Jf; simpl in Jf.
-    rewrite Oset.mem_bool_app in Jf.
-    case_eq (Oset.mem_bool (OAggT T) (A_agg a f) (map (fun a  => A_Expr (F_Dot a)) ({{{s}}})));
+    rewrite aggterm_mem_app in Jf.
+    case_eq (aggterm_mem (A_agg a f) (map (fun a  => A_Expr (F_Dot a)) ({{{s}}})));
       intro Lf; [ | rewrite Lf, Bool.Bool.orb_false_l in Jf].
-    * rewrite Oset.mem_bool_true_iff, in_map_iff in Lf.
+    * rewrite aggterm_mem_true_iff, in_map_iff in Lf.
       destruct Lf as [_b [Lf _]]; discriminate Lf.
-    * case_eq (Oset.mem_bool (OAggT T) (A_agg a f) (flat_map groups_of_env_slice env)); intro Mf.
-      -- rewrite Oset.mem_bool_true_iff, in_flat_map in Mf.
+    * case_eq (aggterm_mem (A_agg a f) (flat_map groups_of_env_slice env)); intro Mf.
+      -- rewrite aggterm_mem_true_iff, in_flat_map in Mf.
          destruct Mf as [[[sa1 g1] l1] [Hx Mf]].
          destruct (in_split _ _ Hx) as [e1 [e2 He]].
          simpl in We'; rewrite Bool.Bool.andb_true_iff in We'; destruct We' as [We' W5].
@@ -611,7 +584,7 @@ destruct e as [f | a f | f la].
       -- rewrite Mf, Bool.Bool.orb_false_l in Jf.
          rewrite !interp_aggterm_unfold, Hf, !(find_eval_env_unfold (T := T) (_ :: _)), Kf, Aux.
          unfold is_a_suitable_env, is_built_upon_ag.
-         rewrite Oset.mem_bool_app, Lf, Mf, Jf; rewrite Bool.Bool.orb_true_r.
+         rewrite aggterm_mem_app, Lf, Mf, Jf; rewrite Bool.Bool.orb_true_r.
          unfold unfold_env_slice; rewrite !map_map; apply Haggregate.
          apply Oset.permut_trans with 
           (map (fun x => interp_funterm ((s, Group_Fine, x :: nil) :: env) f) l).

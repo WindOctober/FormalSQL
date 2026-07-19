@@ -35,25 +35,9 @@ Definition Value_time := NullValues.Value_time.
 Definition Value_timestamp := NullValues.Value_timestamp.
 Definition Value_timestamptz := NullValues.Value_timestamptz.
 
-Definition predicate := Values.predicate.
-Definition Predicate := Values.Predicate.
-
-Definition symbol := symbol value.
-Definition Symbol := Symbol value.
-
-Register symbol as datacert.syntax.symbol.
-Register Symbol as datacert.syntax.Symbol.
-
-Definition aggregate := Values.aggregate.
-Definition Aggregate := Values.Aggregate.
-
-Register aggregate as datacert.syntax.aggregate.
-Register Aggregate as datacert.syntax.Aggregate.
-
 Definition db_state := db_state_ TNull.
 Definition init_db := init_db_ TNull.
 Definition create_table := create_table_ TNull.
-Definition insert_tuples_into := insert_tuples_into_ TNull.
 
 Register db_state as datacert.syntax.db_state.
 Register create_table as datacert.syntax.create_table.
@@ -65,7 +49,8 @@ Fixpoint mk_att att atts vals :=
                         | _ => mk_att att atts vals
                         end
   | _, _ => match att with
-                | Attr_string _ => Value_string None
+                | Attr_string _ typmod =>
+                    Value_string (StringValue typmod None)
                 | Attr_Z _ => Value_Z None
                 | Attr_int32 _ => Value_int32 None
                 | Attr_int64 _ => Value_int64 None
@@ -83,85 +68,73 @@ Fixpoint mk_att att atts vals :=
 Definition mk_tuple_lists atts vals :=
   mk_tuple TNull (Fset.mk_set _ atts) (fun att => mk_att att atts vals).
 
-Definition mk_insert db rel atts valss :=
-  insert_tuples_into db (List.map (mk_tuple_lists atts) valss) rel.
+(**
+  Database instances quantified by generated equivalence theorems must respect
+  their declared SQL attributes.  In particular, a string payload cannot carry
+  a typmod independent from the [Attr_string] used to retrieve it.  Requiring
+  canonical, valid UTF-8 payloads also makes CHARACTER width and comparison
+  semantics independent of malformed internal tuple representations.
+ *)
+Definition value_conforms_attribute (att : attribute) (val : value) : Prop :=
+  match att, val with
+  | Attr_string _ expected, NullValues.Value_string (actual, payload) =>
+      expected = actual /\
+      match payload with
+      | None => True
+      | Some text =>
+          string_fits_typmod expected text = true /\
+          string_canonical_value expected text = text
+      end
+  | Attr_decimal _ precision scale, NullValues.Value_numeric payload =>
+      match payload with
+      | None => True
+      | Some value =>
+          numeric_cast_typmod value precision scale = Some value
+      end
+  | Attr_date _, NullValues.Value_date payload =>
+      match payload with
+      | None => True
+      | Some date => date_value_valid_bool date = true
+      end
+  | Attr_time _, NullValues.Value_time payload =>
+      match payload with
+      | None => True
+      | Some time => time_in_range_bool time = true
+      end
+  | Attr_timestamp _ _, NullValues.Value_timestamp payload
+  | Attr_timestamptz _ _, NullValues.Value_timestamptz payload =>
+      match payload with
+      | None => True
+      | Some timestamp => timestamp_value_valid_bool timestamp = true
+      end
+  | Attr_Z _, NullValues.Value_Z _
+  | Attr_int32 _, NullValues.Value_int32 _
+  | Attr_int64 _, NullValues.Value_int64 _
+  | Attr_bool _, NullValues.Value_bool _
+  | Attr_float _, NullValues.Value_float _
+  | Attr_double _, NullValues.Value_double _
+  | Attr_numeric _, NullValues.Value_numeric _ => True
+  | _, _ => False
+  end.
 
-Register mk_insert as datacert.syntax.mk_insert.
+Definition tuple_conforms_sort
+    (sort : Fset.set (A TNull)) (row : tuple TNull) : Prop :=
+  labels TNull row =S= sort /\
+  forall att, att inS sort ->
+    value_conforms_attribute att (dot TNull row att).
+
+Definition database_values_conform (db : db_state) : Prop :=
+  forall relation row,
+    In row
+      (Febag.elements
+        (Fecol.CBag (CTuple TNull))
+        (@_instance TNull db relation)) ->
+    tuple_conforms_sort (@_basesort TNull db relation) row.
 
 (** Again, for the constructs of the SQL framework *)
-Definition _Select_Star := (@Select_Star TNull).
-
-Register _Select_Star as datacert.syntax._Select_Star.
-
-Definition __Select_List l := (@Select_List TNull (@_Select_List TNull l)).
-
-Register __Select_List as datacert.syntax.__Select_List.
-
-Definition _Select_As := (@Select_As TNull).
-
-Register _Select_As as datacert.syntax._Select_As.
-
-Definition _Group_Fine := (@Group_Fine TNull).
-
-Register _Group_Fine as datacert.syntax._Group_Fine.
-
-Definition __Sql_Dot a := (F_Dot TNull a).
-
-Register __Sql_Dot as datacert.syntax.__Sql_Dot.
-
-Definition _Sql_Dot a := (@A_Expr TNull (__Sql_Dot a)).
-
-Definition _A_Expr := (@A_Expr TNull).
-
-Register _A_Expr as datacert.syntax._A_Expr.
-
-Definition _Group_By l := (@Group_By TNull (List.map _A_Expr l)).
-
-Register _Group_By as datacert.syntax._Group_By.
-
-Definition _A_fun := (@A_fun TNull).
-
-Register _A_fun as datacert.syntax._A_fun.
-
-Definition _A_agg := (@A_agg TNull).
-
-Register _A_agg as datacert.syntax._A_agg.
-
-Definition _F_Constant := (@F_Constant TNull).
-
-Register _F_Constant as datacert.syntax._F_Constant.
-
-Definition _CstZ z := _F_Constant (Value_Z z).
-
-Definition CstZ z := (_A_Expr (_CstZ z)).
-
-Definition _F_Expr := (@F_Expr TNull).
-
-Register _F_Expr as datacert.syntax._F_Expr.
-
-Definition _aggterm := (aggterm TNull).
-
-Register _aggterm as datacert.syntax._aggterm.
-
-Definition _funterm := (funterm TNull).
-
-Register _funterm as datacert.syntax._funterm.
-
-Definition _Union := Union.
-Definition _Inter := Inter.
-Definition _Diff := Diff.
-
-Register _Union as datacert.syntax._Union.
-Register _Inter as datacert.syntax._Inter.
-Register _Diff as datacert.syntax._Diff.
-
-Definition SortedTuplesT := TNull.
-
-Register SortedTuplesT as datacert.syntax.SortedTuplesT.
-
 Definition contains_nulls (t : tuple TNull) :=
  existsb (fun a => match dot TNull t a with
-                   | NullValues.Value_string None
+                   | NullValues.Value_string (_, None)
                    | NullValues.Value_Z None
                    | NullValues.Value_int32 None
                    | NullValues.Value_int64 None
@@ -173,7 +146,7 @@ Definition contains_nulls (t : tuple TNull) :=
                    | NullValues.Value_time None
                    | NullValues.Value_timestamp None
                    | NullValues.Value_timestamptz None => true
-                   | NullValues.Value_string (Some _)
+                   | NullValues.Value_string (_, Some _)
                    | NullValues.Value_Z (Some _)
                    | NullValues.Value_int32 (Some _)
                    | NullValues.Value_int64 (Some _)
