@@ -112,7 +112,7 @@ Record Rcd (elt : Type) (Elt : Oeset.Rcd elt) : Type :=
 Definition build elt (Elt : Oeset.Rcd elt) := 
   mk_R 
     Elt (set := FiniteSetImpl.set Elt) (@mem_ _ Elt) 
-    (@add_ _ Elt) (@add_spec_ _ Elt)(* remove_ *) 
+    (@add_ _ Elt) (@add_spec_ _ Elt)
     (@singleton_ _ Elt) (@singleton_spec_ _ Elt)
     (@union_ _ Elt) (@union_spec_ _ Elt)
     (@inter_ _ Elt) (@inter_spec_ _ Elt)
@@ -124,7 +124,7 @@ Definition build elt (Elt : Oeset.Rcd elt) :=
     (@elements_ _ Elt) (@elements_empty_ _ Elt) 
     (@elements_spec1_ _ Elt) (@elements_spec2_ _ Elt) (@elements_spec3_ _ Elt) 
     (@choose_ _ Elt) (@choose_spec1_ _ Elt) (@choose_spec2_ _ Elt) (@choose_spec3__ _ Elt) 
-    (* fold_ *) (@cardinal_ _ _)
+    (@cardinal_ _ _)
     (@filter_ _ Elt) (@filter_spec_ _ Elt) (@filter_spec_weak_ _ Elt)
     (@partition_ _ Elt) 
     (fun s f h x => @partition_spec1__ _ Elt s x f h)
@@ -133,13 +133,8 @@ Definition build elt (Elt : Oeset.Rcd elt) :=
     (@exists__ _ Elt) (@exists_spec_ _ Elt) (@fold_ _ Elt) (@fold_spec_ _ Elt)
     (@compare_ _ Elt) (@compare_spec_ _ Elt)
     (@compare_eq_trans_ _ Elt) (@compare_eq_lt_trans_ _ Elt) (@compare_lt_eq_trans_ _ Elt) 
-    (@compare_lt_trans_ _ Elt) (@compare_lt_gt_ _ Elt) 
-(* 
-    eq_equiv_ *)  (* subset_spec_ *) (* elements_spec3_ *)
-     (* remove_spec_  *)
-     (* mem_diff_ fold_spec_*) 
-     (@cardinal_spec_ _ _)
-(* cardinal_subset_ filter_spec2_ filter_spec3_ filter_true_ filter_and_ filter_or_ filter_not_*).
+    (@compare_lt_trans_ _ Elt) (@compare_lt_gt_ _ Elt)
+    (@cardinal_spec_ _ _).
 
 Section Sec.
 
@@ -1253,7 +1248,6 @@ split.
   + apply elements_spec3.
   + apply SortA_app with (fun x y => Oset.eq_bool Elt x y = true); try apply Oset.StrictOrder.
     * apply Oset.Equivalence.
-    (* * apply Oset.StrictOrder. *)
     * {
         apply (filter_sort (Oset.Equivalence Elt)).
         - apply Oset.StrictOrder.
@@ -1309,7 +1303,6 @@ split.
   + apply elements_spec3.
   + apply SortA_app with (fun x y => Oset.eq_bool Elt x y = true); try apply Oset.StrictOrder.
     * apply Oset.Equivalence.
-    (* * apply Oset.StrictOrder. *)
     * {
         apply (filter_sort (Oset.Equivalence Elt)).
         - apply Oset.StrictOrder.
@@ -1692,34 +1685,6 @@ induction l as [ | a1 l].
   rewrite Oset.eq_bool_true_iff; apply refl_equal.
 Qed.
 
-(*
-Lemma all_diff_bool_elements :
- forall s, Oset.all_diff_bool EltA (elements FA s) = true.
-Proof.
-intros s.
-assert (Aux : NoDupA (fun x y : A => Oset.eq_bool EltA x y = true) (elements FA s)).
-{
-  apply (SortA_NoDupA (Oset.Equivalence EltA) (Oset.StrictOrder EltA)).
-  - intros a1 a2 Ha b1 b2 Hb.
-    rewrite Oset.eq_bool_true_iff in Ha, Hb; subst a2 b2.
-    split; exact (fun h => h).
-  - apply  (elements_spec3 FA s).
-}    
-set (l := elements FA s) in *; clearbody l.
-induction l as [ | a1 l].
-- apply refl_equal.
-- inversion Aux; clear Aux; subst. 
-  simpl.
-  destruct l as [ | a2 l]; [apply refl_equal | ].
-  rewrite (IHl H2), Bool.andb_true_r; clear IHl H2.
-  revert H1.
-  generalize (a2 :: l); clear a2 l; intro l.
-  rewrite negb_true_iff, <- not_true_iff_false.
-  intros H K; apply H.
-  rewrite Mem.mem_bool_true_iff in K.
-  rewrite InA_alt; apply K.
-Qed.
-*)
 End Sec2.
 
 End Fset.

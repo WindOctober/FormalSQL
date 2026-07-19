@@ -1845,8 +1845,6 @@ End Permut.
 
 End Oeset.
 
-(* Notation "x '↢' OA '↣' y" := (Oeset.compare OA x y = Eq) (at level 70, no associativity). *)
-
 Lemma comparelA_map_eq_1 : 
   forall (A B : Type) (OA : Oeset.Rcd A) (OB : Oeset.Rcd B) (f1 f2 : A -> B) l,
          (forall x, Oeset.compare OB (f1 x) (f2 x) = Eq) ->
@@ -2379,25 +2377,6 @@ rewrite <- all_diff_bool_ok; assumption.
 Qed.
 
 
-(* Lemma find_map2 :
-  forall (C : Type) (f : C -> A) (g : C -> B) l a, 
-    (forall a1 a2, List.In a1 l -> List.In a2 l -> f a1 = f a2 -> a1 = a2) ->
-    In a l -> find (f a) (map (fun x => (f x, g x)) l) = Some (g a).
-Proof.
-intros C f g l a; 
-induction l as [ | a1 l];
-intros H Ha.
-- contradiction Ha.
-- simpl.
-  case_eq (eq_bool (f a) (f a1)); intro Ja.
-  + rewrite eq_bool_true_iff in Ja.
-    do 2 apply f_equal; apply sym_eq; apply (H _ _ Ha (or_introl _ (refl_equal _)) Ja).
-  + simpl in Ha; destruct Ha as [Ha | Ha].
-    * subst a1; unfold eq_bool in Ja; rewrite compare_eq_refl in Ja; discriminate Ja.
-    * apply IHl; [ | assumption].
-      do 4 intro; apply H; right; assumption.
-Qed.
-*)
 
 End Find.  
 
@@ -3143,66 +3122,6 @@ intros A OA B C f l a; induction l as [ | [a1 b1] l]; intro Ha.
   + apply IHl; assumption.
 Qed.
 
-(* Lemma find_one_to_one_map :
-  forall (A B C : Type) (OA : Rcd A) (OB : Rcd B) (ll : list (A * C)) (f : A -> B),
-    (forall a1 a2, List.In a1 (map fst ll) -> List.In a2 (map fst ll) -> f a1 = f a2 -> a1 = a2) ->
-    forall a, find OB (f a) (map (fun x => (f (fst x), snd x)) ll) = find OA a ll.
-Proof.
-intros A B C OA OB ll; 
-induction ll as [ | [a1 b1] ll];
-intros f H a; [apply refl_equal | simpl].
-case_eq (eq_bool OB (f a) (f a1)); intro Ja.
-- rewrite eq_bool_true_iff in Ja.
-  do 2 apply f_equal; apply sym_eq; apply (H _ _ Ha (or_introl _ (refl_equal _)) Ja).
-  + simpl in Ha; destruct Ha as [Ha | Ha].
-    * subst a1; unfold eq_bool in Ja; rewrite compare_eq_refl in Ja; discriminate Ja.
-    * apply IHl; [ | assumption].
-      do 4 intro; apply H; right; assumption.
-Qed.
-*)
-  
-(*
-Lemma find_map_3 :
-  forall (A : Type) (OA : Rcd A) (B1 B2 C D : Type) 
-         (f : C -> A) (g1 : C -> B1) (g2 : C -> B2) (h1 : B1 -> D) (h2 : B2 -> D) l a d, 
-    (forall a1, List.In a1 l -> h1 (g1 a1) = h2 (g2 a1)) ->
-    match find OA (f a) (map (fun x => (f x, g1 x)) l) with
-      | Some x => h1 x 
-      | None => d
-    end = 
-    match find OA (f a) (map (fun x => (f x, g2 x)) l) with
-      | Some x => h2 x 
-      | None => d
-    end.
-Proof.
-intros A OA B1 B2 C D f g1 g2 h1 h2 l a d; 
-induction l as [ | a1 l]; intro H.
-- apply refl_equal.
-- simpl.
-  case_eq (eq_bool OA (f a) (f a1)); intro Ka.
-  + apply H; left; apply refl_equal.
-  + apply IHl; do 2 intro; apply H; right; assumption.
-Qed.
-
-Lemma find_map4 :
-  forall (A B : Type) (OA : Rcd A) (OB : Rcd B) (C : Type) (f : A -> B) a (l : list (A * C)) l',
-    (forall a1 a2, In a1 (map (@fst _ _) l) -> f a1 = f a2 -> a1 = a2) ->
-    l' = map (fun x => match x with (x1, x2) => (f x1, x2) end) l ->
-    find OA a l = find OB (f a) l'.
-Proof.
-intros A B OA OB C f a l l' H Hl'; subst l'.
-induction l as [ | [a1 b1] l]; [apply refl_equal | simpl].
-case_eq (eq_bool OA a a1); intro Ha.
-- rewrite eq_bool_true_iff in Ha; subst a1.
-  unfold eq_bool; rewrite compare_eq_refl; apply refl_equal.
-- case_eq (eq_bool OB (f a) (f a1)); intro Hb.
-  + rewrite eq_bool_true_iff in Hb.
-    assert (Ka := H a1 a (or_introl _ (refl_equal _)) (sym_eq Hb)); subst a1.
-    unfold eq_bool in Ha; rewrite compare_eq_refl in Ha; discriminate Ha.
-  + apply IHl.
-    do 3 intro; apply H; right; assumption.
-Qed.
-*)
 
 End Oset.
 

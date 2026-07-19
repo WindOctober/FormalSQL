@@ -19,7 +19,7 @@ Set Implicit Arguments.
 Require Import FunInd.
 Require Import FSets.
 
-Require Import OrderedSet (*BoolFacts ListFacts ListPermut ListSort*).
+Require Import OrderedSet.
 
 Require Import ZArith Lia.
 
@@ -672,7 +672,7 @@ Ltac intuition_in := repeat progress (intuition; inv).
 Ltac order := match goal with
  | U: lt_tree _ ?s, V: InT _ ?s |- _ => generalize (U _ V); clear U; order
  | U: gt_tree _ ?s, V: InT _ ?s |- _ => generalize (U _ V); clear U; order
- | _ => idtac (* MX.order *)
+ | _ => idtac
 end.
 
 

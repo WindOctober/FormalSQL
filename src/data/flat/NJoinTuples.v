@@ -22,7 +22,6 @@ Section Sec.
 
 Hypothesis T : Rcd.
 
-(* *)
 Lemma remove_dup_cols :
   forall l f s s2, s2 subS s -> (forall a, a inS s2 -> (f a) inS (Fset.diff _ s s2)) -> 
     (forall t, In t l -> labels T t =S= s) ->

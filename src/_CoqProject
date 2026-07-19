@@ -2,7 +2,6 @@
 
 common/BasicTacs.v
 common/BasicFacts.v
-common/relations/TransClosure.v
 common/comparison/OrderedSet.v
 common/lists/ListFacts.v
 common/lists/Mem.v
@@ -14,14 +13,7 @@ common/sets/FiniteSet.v
 common/sets/FiniteBag.v
 common/sets/FiniteCollection.v
 common/trees/Tree.v
-common/monad/Translation.v
-common/monad/Monad.v
 terms/Term.v
-terms/Subterm.v
-terms/Substitution.v
-terms/Matching.v
-terms/Unification.v
-terms/DExpressions.v
 logic/Bool3.v
 logic/Formula.v
 data/flat/Join.v
@@ -35,10 +27,8 @@ data/flat/Projection.v
 data/flat/WellFormed.v
 data/flat/EnvInv.v
 data/flat/FlatData.v
-data/sql/Sql.v
 data/sql/SqlAlgebra.v
 data/sql/SqlOrder.v
-data/sql/SqlListAlgebra.v
 data/sql/SqlListFacts.v
 data/proof_of_concept/TuplesImpl.v
 data/proof_of_concept/ValueFloat.v
@@ -52,4 +42,3 @@ data/proof_of_concept/ValuePredicates.v
 data/proof_of_concept/Values.v
 data/proof_of_concept/GenericInstance.v
 data/proof_of_concept/SqlSyntax.v
-data/proof_of_concept/Movie.v

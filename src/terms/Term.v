@@ -65,17 +65,6 @@ Defined.
 
 
 Hypothesis OX : Oset.Rcd variable.
-(*
-Hypothesis OD : Oset.Rcd dom.
-split with 
-    (fun x1 x2 => match x1, x2 with 
-                | Vrbl d1 x1, Vrbl d2 x2 =>
-                    Oeset.compare (mk_oepairs OD (oeset_of_oset ON)) (d1, x1) (d2, x2)
-                end);
-  try (intros [d1 x1] [d2 x2] [d3 x3]; oeset_compare_tac).
-intros [d1 x1] [d2 x2]; oeset_compare_tac.
-Defined.
-*)
 
 Hypothesis OF : Oset.Rcd symbol.
 Hypothesis X : Fset.Rcd OX.
@@ -96,13 +85,6 @@ Proof.
 unfold_tac.
 Qed.
 
-(*
-Fixpoint variables_t_list (t : term) :=
-  match t with
-  | Term _ l => flat_map variables_t_list l
-  | Var x => x :: nil
-  end.
-*)
 Lemma in_variables_t_var :
   forall x y, x inS variables_t (Var y) <-> y = x.
 Proof.
@@ -110,36 +92,6 @@ intros x y; rewrite (variables_t_unfold (Var y)), Fset.singleton_spec, Oset.eq_b
 split; exact (fun h => sym_eq h).
 Qed.
 
-(*Lemma variables_t_variables_t_list :
-  forall t, variables_t t =S= Fset.mk_set _ (variables_t_list t).
-Proof.
-intro t; pattern t; apply term_rec3.
-- intro v; rewrite Fset.equal_spec; intro x.
-  rewrite variables_t_unfold, Fset.singleton_spec.
-  rewrite Fset.mem_mk_set; simpl variables_t_list.
-  rewrite Oset.mem_bool_unfold, Bool.orb_false_r.
-  apply refl_equal.
-- intros f l IHl; rewrite Fset.equal_spec; intro x.
-  rewrite variables_t_unfold, Fset.mem_mk_set.
-  simpl variables_t_list.
-  rewrite eq_bool_iff, Fset.mem_Union, Oset.mem_bool_true_iff, in_flat_map; split.
-  + intros [s [Hs Hx]].
-    rewrite in_map_iff in Hs.
-    destruct Hs as [ts [Hs Hts]].
-    exists ts; split; [assumption | ].
-    assert (IH := IHl _ Hts).
-    rewrite Fset.equal_spec in IH.
-    subst s; rewrite IH, Fset.mem_mk_set, Oset.mem_bool_true_iff in Hx.
-    exact Hx.
-  + intros [s [Hs Hx]].
-    exists (variables_t s); split.
-    * rewrite in_map_iff; exists s; split; trivial.
-    * assert (IH := IHl _ Hs).
-      rewrite Fset.equal_spec in IH.
-      rewrite IH, Fset.mem_mk_set, Oset.mem_bool_true_iff.
-      exact Hx.
-Qed.
-*)
 
 Fixpoint term_compare (t1 t2 : term) : comparison :=
   match t1, t2 with
@@ -204,43 +156,6 @@ case (term_compare t1 t2).
   intro; subst; apply False_rec; apply H; trivial.
 Qed.
 
-(*
-Lemma term_compare_lt_trans :
-  forall t1 t2 t3, term_compare t1 t2 = Lt -> term_compare t2 t3 = Lt -> term_compare t1 t3 = Lt.
-Proof.
-intro t1; pattern t1; apply term_rec3; clear t1.
-- intros v1 [v2 | f2 l2] [v3 | f3 l3]; try (discriminate || (simpl; trivial)).
-  oset_compare_tac.
-- intros f1 l1 IH [v2 | f2 l2] [v3 | f3 l3]; try (discriminate || (simpl; trivial; fail)).
-  rewrite 3 term_compare_unfold.
-  compareAB_tac; try oset_compare_tac.
-  comparelA_tac.
-  + oset_compare_tac.
-  + 
-  case_eq (Oset.compare OF f1 f2); intro Hf12.
-  + generalize (Oset.eq_bool_ok OF f1 f2); rewrite Hf12; intro; subst f2; clear Hf12.
-    intros Hl1.
-    case (Oset.compare OF f1 f3); trivial.
-    revert Hl1; refine (comparelA_lt_trans _ _ _ _ _ _ _ _).
-    * do 6 intro; intros Ha12 Ha23.
-      generalize (term_eq_bool_ok a1 a2); rewrite Ha12; intro; subst a2.
-      assumption.
-    * do 6 intro; intros Ha12 Ha23.
-      generalize (term_eq_bool_ok a1 a2); rewrite Ha12; intro; subst a2.
-      assumption.
-    * do 6 intro; intros Ha12 Ha23.
-      generalize (term_eq_bool_ok a2 a3); rewrite Ha23; intro; subst a2.
-      assumption.
-    * do 6 intro; apply IH; trivial.
-  + intros _; case_eq (Oset.compare OF f2 f3); intro Hf23.
-    * rewrite (Oset.compare_lt_eq_trans _ _ _ _ Hf12 Hf23).
-      intros _; apply refl_equal.
-    * rewrite (Oset.compare_lt_trans _ _ _ _ Hf12 Hf23).
-      intros _; apply refl_equal.
-    * intro Abs; discriminate Abs.
-  + intro Abs; discriminate Abs.
-Qed.
-*)
 
 
 Lemma term_compare_lt_trans :

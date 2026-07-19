@@ -262,16 +262,5 @@ Ltac env_tac :=
                          (env_g ?T ?e (Group_By ?T ?g) ?l2) =>
       apply env_g_eq_2; apply Oeset.permut_refl_alt; assumption
 
-(*
-    | |- Tuple.equiv_env ?T (Tuple.env_g ?T ?e ?g (?x1 :: nil)) 
-                         (Tuple.env_g ?T ?e ?g (?x2 :: nil)) => 
-      let h := fresh "__YY" in 
-      assert (h := refl_equal 2%N);
-      rewrite <- !Tuple.env_t_env_g                         
-
-    | |- Tuple.equiv_env ?T (Tuple.env_g ?T ?e Tuple.Group_Fine (?x1 :: nil)) 
-                       (Tuple.env_g ?T ?e Tuple.Group_Fine (?x2 :: nil)) =>
-      assert (__XX1 := refl_equal 1%N)
-*)
     | _ =>  trivial; fail
   end.
