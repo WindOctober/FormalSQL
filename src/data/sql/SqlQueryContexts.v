@@ -116,6 +116,28 @@ Definition formula_expr_global_outcome_equiv
   forall env outcome,
     eval_formula env left outcome <-> eval_formula env right outcome.
 
+(** [WHERE] observes only whether a successful three-valued predicate result
+    is TRUE; FALSE and UNKNOWN both reject the row.  This relation preserves
+    every SQL runtime error exactly while allowing two successful formulas to
+    return different non-TRUE values.  The bidirectional clauses retain all
+    legal outcomes of relational subqueries rather than selecting one. *)
+Definition formula_expr_global_filter_outcome_equiv
+    (left right : formula_expr T relname) : Prop :=
+  forall env,
+    (forall left_truth,
+      eval_formula env left (SqlSuccess left_truth) ->
+      exists right_truth,
+        eval_formula env right (SqlSuccess right_truth) /\
+        Bool.is_true (B T) left_truth = Bool.is_true (B T) right_truth) /\
+    (forall right_truth,
+      eval_formula env right (SqlSuccess right_truth) ->
+      exists left_truth,
+        eval_formula env left (SqlSuccess left_truth) /\
+        Bool.is_true (B T) left_truth = Bool.is_true (B T) right_truth) /\
+    (forall error,
+      eval_formula env left (SqlError error) <->
+      eval_formula env right (SqlError error)).
+
 (** Group substitution additionally preserves the query-level aggregate
     finalization observation of HAVING.  Scalar formula outcome equivalence
     alone is insufficient because lazy CASE may hide an aggregate error from
@@ -140,6 +162,36 @@ Lemma query_expr_global_outcome_equiv_refl :
   forall query, query_expr_global_outcome_equiv query query.
 Proof.
 intros query env outcome; tauto.
+Qed.
+
+Lemma formula_expr_global_filter_outcome_equiv_refl :
+  forall formula,
+    formula_expr_global_filter_outcome_equiv formula formula.
+Proof.
+intros formula env.
+split.
+- intros truth Heval; exists truth; auto.
+- split.
+  + intros truth Heval; exists truth; auto.
+  + intro observed_error; tauto.
+Qed.
+
+Lemma formula_expr_global_filter_outcome_equiv_sym :
+  forall left right,
+    formula_expr_global_filter_outcome_equiv left right ->
+    formula_expr_global_filter_outcome_equiv right left.
+Proof.
+intros left right Hequiv env.
+destruct (Hequiv env) as [Hforward [Hbackward Herrors]].
+split.
+- intros right_truth Hright.
+  destruct (Hbackward right_truth Hright) as [left_truth [Hleft Haccept]].
+  exists left_truth; split; [exact Hleft | symmetry; exact Haccept].
+- split.
+  + intros left_truth Hleft.
+    destruct (Hforward left_truth Hleft) as [right_truth [Hright Haccept]].
+    exists right_truth; split; [exact Hright | symmetry; exact Haccept].
+  + intro error; symmetry; apply Herrors.
 Qed.
 
 (** Constructor congruence for formulas. *)
@@ -490,6 +542,46 @@ intros left right Hequiv env rows outcome; split; intro Heval.
 - now eapply eval_filter_rows_formula_congr_forward.
 - eapply eval_filter_rows_formula_congr_forward; [|exact Heval].
   intros current_env current_outcome; symmetry; apply Hequiv.
+Qed.
+
+(** Ordinary filtering is congruent under the weaker SQL observation that
+    retains only TRUE versus non-TRUE, provided runtime errors are preserved.
+    This is the appropriate interface for rewrites such as [p IS TRUE] versus
+    [p]: they need not return the same Bool3 value on NULL, but they retain
+    exactly the same rows. *)
+Lemma eval_filter_rows_formula_acceptance_congr_forward :
+  forall left right,
+    formula_expr_global_filter_outcome_equiv left right ->
+    forall env rows outcome,
+      eval_filter_rows env left rows outcome ->
+      eval_filter_rows env right rows outcome.
+Proof.
+intros left right Hequiv env rows outcome Heval.
+induction Heval.
+- constructor.
+- apply EFilterRows_HeadError.
+  exact (proj1 (proj2 (proj2 (Hequiv (env_t T env row))) error) H).
+- destruct (proj1 (Hequiv (env_t T env row)) truth H)
+    as [right_truth [Hright Haccept]].
+  replace (@filter_cons_outcome T truth row tail)
+    with (@filter_cons_outcome T right_truth row tail).
+  + eapply EFilterRows_Cons; [exact Hright | exact (IHHeval Hequiv)].
+  + unfold filter_cons_outcome.
+    destruct tail as [tail_rows | tail_error]; simpl;
+      [now rewrite Haccept | reflexivity].
+Qed.
+
+Lemma eval_filter_rows_formula_acceptance_congr :
+  forall left right,
+    formula_expr_global_filter_outcome_equiv left right ->
+    forall env rows outcome,
+      eval_filter_rows env left rows outcome <->
+      eval_filter_rows env right rows outcome.
+Proof.
+intros left right Hequiv env rows outcome; split; intro Heval.
+- now eapply eval_filter_rows_formula_acceptance_congr_forward.
+- eapply eval_filter_rows_formula_acceptance_congr_forward; [|exact Heval].
+  now apply formula_expr_global_filter_outcome_equiv_sym.
 Qed.
 
 Lemma eval_groups_formula_congr_forward :
@@ -914,6 +1006,31 @@ intros env outcome; split; intro Heval; inversion Heval; subst.
   + now apply (proj2 (eval_filter_rows_formula_congr Hformula _ _ _)).
 Qed.
 
+(** Typed filter congruence for predicates that preserve SQL errors and the
+    TRUE/non-TRUE acceptance decision, without requiring FALSE and UNKNOWN to
+    be representation-equal. *)
+Lemma query_expr_filter_global_typed_acceptance_congr :
+  forall formula formula' input input',
+    formula_expr_global_filter_outcome_equiv formula formula' ->
+    query_expr_global_typed_outcome_equiv input input' ->
+    query_expr_global_typed_outcome_equiv
+      (QExpr_Filter formula input) (QExpr_Filter formula' input').
+Proof.
+intros formula formula' input input' Hformula [Houtputs Hinput].
+split; [exact Houtputs|].
+intros env outcome; split; intro Heval; inversion Heval; subst.
+- apply EQuery_FilterChildError. transport_query_forward Hinput.
+- eapply EQuery_FilterRows.
+  + transport_query_forward Hinput.
+  + now apply (proj1
+      (eval_filter_rows_formula_acceptance_congr Hformula _ _ _)).
+- apply EQuery_FilterChildError. transport_query_backward Hinput.
+- eapply EQuery_FilterRows.
+  + transport_query_backward Hinput.
+  + now apply (proj2
+      (eval_filter_rows_formula_acceptance_congr Hformula _ _ _)).
+Qed.
+
 Lemma query_expr_group_global_typed_congr :
   forall select_list group_terms having having' input input',
     formula_expr_global_group_outcome_equiv having having' ->
@@ -1235,7 +1352,15 @@ unfold query_expr_observation_equiv, successful_relation_equiv.
 split; [exact Hsuccess|].
 split; [exact Hfirst_safe|].
 split; [exact Hsecond_safe|].
-intro rows; apply Hequiv.
+split.
+- intros rows Hrows.
+  exists rows; split.
+  + now apply (proj1 (Hequiv (SqlSuccess rows))).
+  + apply ordered_rows_equiv_refl.
+- intros rows Hrows.
+  exists rows; split.
+  + now apply (proj2 (Hequiv (SqlSuccess rows))).
+  + apply ordered_rows_equiv_refl.
 Qed.
 
 Lemma query_expr_equiv_of_outcome_rel_equiv_safe :
@@ -1298,20 +1423,28 @@ Proof.
 intros env first second Houtputs Hfirst_effect Hsecond_effect Hbags
   Hfirst_safe Hsecond_safe Hsuccess.
 split; [exact Houtputs|].
-unfold query_expr_observation_equiv.
+apply (proj2
+  (@query_bag_effect_observation_equiv_iff_possible_bag_equiv
+    T relname basesort instance unknown contains_nulls
+    symbol_runtime_error aggregate_runtime_error value_is_null
+    env first second Hfirst_effect Hsecond_effect)).
+unfold query_possible_bag_equiv.
 apply successful_relation_equiv_intro.
-- exact Hsuccess.
-- exact Hfirst_safe.
-- exact Hsecond_safe.
-- apply (proj2
-    (bag_closed_rel_equiv_iff_alpha_rel_equiv
-      (@query_expr_effect_sound T relname basesort instance unknown
-        contains_nulls symbol_runtime_error aggregate_runtime_error
-        value_is_null env first Hfirst_effect)
-      (@query_expr_effect_sound T relname basesort instance unknown
-        contains_nulls symbol_runtime_error aggregate_runtime_error
-        value_is_null env second Hsecond_effect))).
-  exact Hbags.
+- destruct Hsuccess as [rows Hrows].
+  exists (rows_bag T rows); simpl.
+  exists rows; split; [exact Hrows | apply bag_eq_refl].
+- intros error Herror; simpl in Herror.
+  exact (Hfirst_safe error Herror).
+- intros error Herror; simpl in Herror.
+  exact (Hsecond_safe error Herror).
+- intros bag Hbag.
+  exists bag; split.
+  + now apply (proj1 (Hbags bag)).
+  + apply bag_eq_refl.
+- intros bag Hbag.
+  exists bag; split.
+  + now apply (proj2 (Hbags bag)).
+  + apply bag_eq_refl.
 Qed.
 
 (** Immediate [Distinct] is the canonical local reset principle.  A proof may
@@ -1321,9 +1454,16 @@ Qed.
 Theorem query_distinct_equiv_of_local_success_rel_equiv :
   forall env left right,
     query_expr_outputs left = query_expr_outputs right ->
-    (forall rows,
-      eval_query env left (SqlSuccess rows) <->
-      eval_query env right (SqlSuccess rows)) ->
+    (forall left_rows,
+      eval_query env left (SqlSuccess left_rows) ->
+      exists right_rows,
+        eval_query env right (SqlSuccess right_rows) /\
+        @ordered_rows_equiv T left_rows right_rows) ->
+    (forall right_rows,
+      eval_query env right (SqlSuccess right_rows) ->
+      exists left_rows,
+        eval_query env left (SqlSuccess left_rows) /\
+        @ordered_rows_equiv T left_rows right_rows) ->
     query_expr_runtime_safe env (QExpr_Distinct left) ->
     query_expr_runtime_safe env (QExpr_Distinct right) ->
     query_expr_has_success env (QExpr_Distinct left) ->
@@ -1331,7 +1471,8 @@ Theorem query_distinct_equiv_of_local_success_rel_equiv :
       symbol_runtime_error aggregate_runtime_error value_is_null
       env (QExpr_Distinct left) (QExpr_Distinct right).
 Proof.
-intros env left right Houtputs Hlists Hleft_safe Hright_safe Hsuccess.
+intros env left right Houtputs Hforward Hbackward
+  Hleft_safe Hright_safe Hsuccess.
 apply query_bag_effect_equiv_of_success_bags_safe.
 - exact Houtputs.
 - reflexivity.
@@ -1359,7 +1500,8 @@ Proof.
 intros env left right [Houtputs [Hsuccess [Hleft_safe [Hright_safe Hlists]]]].
 apply query_distinct_equiv_of_local_success_rel_equiv.
 - exact Houtputs.
-- exact Hlists.
+- exact (proj1 Hlists).
+- exact (proj2 Hlists).
 - intros error Herror; inversion Herror; subst.
   eapply Hleft_safe; eassumption.
 - intros error Herror; inversion Herror; subst.
@@ -1469,21 +1611,35 @@ intros first second Hequiv [bag | error]; simpl.
 - apply Hequiv.
 Qed.
 
-Lemma successful_relation_equiv_rel_equiv :
-  forall (first second : sql_outcome (list tuple) -> Prop),
-    successful_relation_equiv first second ->
-    rel_equiv first second.
-Proof.
-intros first second [_ [Hfirst_error [Hsecond_error Hsuccess]]] [rows | error].
-- apply Hsuccess.
-- split; intro Herror.
-  + contradiction (Hfirst_error error Herror).
-  + contradiction (Hsecond_error error Herror).
-Qed.
-
 Definition successful_possible_bags
     (observations : sql_outcome (list tuple) -> Prop) : bagT -> Prop :=
   fun bag => @outcome_alpha T observations (SqlSuccess bag).
+
+Lemma successful_relation_equiv_possible_bags_rel_equiv :
+  forall (first second : sql_outcome (list tuple) -> Prop),
+    successful_relation_equiv (@ordered_rows_equiv T) first second ->
+    rel_equiv
+      (successful_possible_bags first)
+      (successful_possible_bags second).
+Proof.
+intros first second [_ [_ [_ [Hforward Hbackward]]]] bag.
+unfold successful_possible_bags, outcome_alpha, alpha; simpl.
+split.
+- intros [left_rows [Hleft Hbag]].
+  destruct (Hforward left_rows Hleft)
+    as [right_rows [Hright Hrows]].
+  exists right_rows; split; [exact Hright |].
+  eapply bag_eq_trans.
+  + exact (bag_eq_sym (ordered_rows_equiv_implies_bag_eq Hrows)).
+  + exact Hbag.
+- intros [right_rows [Hright Hbag]].
+  destruct (Hbackward right_rows Hright)
+    as [left_rows [Hleft Hrows]].
+  exists left_rows; split; [exact Hleft |].
+  eapply bag_eq_trans.
+  + exact (ordered_rows_equiv_implies_bag_eq Hrows).
+  + exact Hbag.
+Qed.
 
 Lemma successful_possible_bags_extensional :
   forall observations,
@@ -1562,11 +1718,10 @@ Theorem query_expr_equiv_possible_bag_context_congr :
         (successful_possible_bags (eval_query env second))).
 Proof.
 intros env context first second [Houtputs Hobservation].
-apply list_outcome_equiv_possible_bag_query_boundary_congr.
+split.
 - now apply (query_expr_outputs_eq_sort_eq first second).
--
-apply successful_relation_equiv_rel_equiv.
-exact Hobservation.
+- apply possible_bag_context_congr.
+  now apply successful_relation_equiv_possible_bags_rel_equiv.
 Qed.
 
 End Sec.

@@ -82,17 +82,27 @@ Definition outcome_equiv {A : Type}
   end.
 
 (**
-  Relational evaluators, such as the list-observation semantics, may have several
-  successful outputs.  Equivalence requires at least one successful left output,
-  excludes every error outcome on both sides, and equates all successful outputs.
-  The final condition also gives existence of a successful right output.
+  Relational evaluators, such as the ordered-observation semantics, may have
+  several successful outputs.  Equivalence requires at least one successful
+  left output, excludes every error outcome on both sides, and matches successful
+  outputs in both directions through [value_equiv].  The explicit relation is
+  essential for represented SQL values: observable equality need not coincide
+  with Coq's Leibniz equality on their internal representation.
  *)
 Definition successful_relation_equiv {A : Type}
+    (value_equiv : A -> A -> Prop)
     (left right : sql_outcome A -> Prop) : Prop :=
   (exists value, left (SqlSuccess value)) /\
   (forall error, ~ left (SqlError error)) /\
   (forall error, ~ right (SqlError error)) /\
-  (forall value, left (SqlSuccess value) <-> right (SqlSuccess value)).
+  (forall left_value,
+    left (SqlSuccess left_value) ->
+    exists right_value,
+      right (SqlSuccess right_value) /\ value_equiv left_value right_value) /\
+  (forall right_value,
+    right (SqlSuccess right_value) ->
+    exists left_value,
+      left (SqlSuccess left_value) /\ value_equiv left_value right_value).
 
 (** Relational evaluators can expose several legal successes or errors.  The
     lifting below requires both relations to expose at least one outcome and
@@ -141,6 +151,23 @@ split.
 - split.
   + intros value Hvalue; exists value; auto.
   + intros observed_error; tauto.
+Qed.
+
+Lemma successful_relation_equiv_refl :
+  forall (A : Type) (value_equiv : A -> A -> Prop),
+    (forall value, value_equiv value value) ->
+    forall outcomes,
+      (exists value, outcomes (SqlSuccess value)) ->
+      (forall error, ~ outcomes (SqlError error)) ->
+      successful_relation_equiv value_equiv outcomes outcomes.
+Proof.
+intros A value_equiv Hrefl outcomes Hsuccess Hsafe.
+unfold successful_relation_equiv.
+repeat split; try assumption.
+- intros left_value Hleft.
+  exists left_value; now split.
+- intros right_value Hright.
+  exists right_value; now split.
 Qed.
 
 Lemma outcome_relation_equiv_intro :
@@ -198,26 +225,61 @@ intros A value_equiv left_error right_error H; exact H.
 Qed.
 
 Lemma successful_relation_equiv_intro :
-  forall (A : Type) (left right : sql_outcome A -> Prop),
+  forall (A : Type) (value_equiv : A -> A -> Prop)
+    (left right : sql_outcome A -> Prop),
     (exists value, left (SqlSuccess value)) ->
     (forall error, ~ left (SqlError error)) ->
     (forall error, ~ right (SqlError error)) ->
-    (forall value, left (SqlSuccess value) <-> right (SqlSuccess value)) ->
-    successful_relation_equiv left right.
+    (forall left_value,
+      left (SqlSuccess left_value) ->
+      exists right_value,
+        right (SqlSuccess right_value) /\ value_equiv left_value right_value) ->
+    (forall right_value,
+      right (SqlSuccess right_value) ->
+      exists left_value,
+        left (SqlSuccess left_value) /\ value_equiv left_value right_value) ->
+    successful_relation_equiv value_equiv left right.
 Proof.
-intros A left right Hsuccess Hleft Hright Hvalues.
+intros A value_equiv left right Hsuccess Hleft Hright Hforward Hbackward.
 unfold successful_relation_equiv.
 split; [exact Hsuccess |].
 split; [exact Hleft |].
-split; [exact Hright | exact Hvalues].
+split; [exact Hright |].
+split; [exact Hforward | exact Hbackward].
 Qed.
 
 Lemma successful_relation_equiv_has_right_success :
-  forall (A : Type) (left right : sql_outcome A -> Prop),
-    successful_relation_equiv left right ->
+  forall (A : Type) (value_equiv : A -> A -> Prop)
+    (left right : sql_outcome A -> Prop),
+    successful_relation_equiv value_equiv left right ->
     exists value, right (SqlSuccess value).
 Proof.
-intros A left right [Hsuccess [_ [_ Hvalues]]].
-destruct Hsuccess as [value Hvalue].
-exists value; now apply (proj1 (Hvalues value)).
+intros A value_equiv left right
+  [[left_value Hleft] [_ [_ [Hforward _]]]].
+destruct (Hforward left_value Hleft) as [right_value [Hright _]].
+now exists right_value.
+Qed.
+
+(** A safe equivalence is a stronger certificate than error-preserving
+    equivalence.  Proof search may establish the former and lift it to the
+    latter without any external safety classification. *)
+Lemma successful_relation_equiv_implies_outcome_relation_equiv :
+  forall (A : Type) (value_equiv : A -> A -> Prop)
+    (left right : sql_outcome A -> Prop),
+    successful_relation_equiv value_equiv left right ->
+    outcome_relation_equiv value_equiv left right.
+Proof.
+intros A value_equiv left right
+  [Hleft_success [Hleft_safe [Hright_safe [Hforward Hbackward]]]].
+apply outcome_relation_equiv_intro.
+- destruct Hleft_success as [value Hvalue].
+  now exists (SqlSuccess value).
+- destruct Hleft_success as [left_value Hleft].
+  destruct (Hforward left_value Hleft) as [right_value [Hright _]].
+  now exists (SqlSuccess right_value).
+- exact Hforward.
+- exact Hbackward.
+- intro error; split; intro Herror.
+  + contradiction (Hleft_safe error Herror).
+  + contradiction (Hright_safe error Herror).
 Qed.

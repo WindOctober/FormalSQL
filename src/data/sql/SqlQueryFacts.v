@@ -370,10 +370,38 @@ intros first second Heq; split; intro Heval.
   now apply bag_eq_sym.
 Qed.
 
-(** Introduction rule used by generated proof obligations.  Ordered outputs
-    equality is deliberately the first premise; the remaining premises are
-    exactly the success-only observation contract, including explicit safety
-    obligations for both queries. *)
+(** General introduction rule used by generated proof obligations.  Ordered
+    outputs are compared positionally, while each corresponding SQL row uses
+    [OTuple]'s extensional equality.  Requiring witnesses in both directions
+    avoids imposing Coq representation equality on projected tuples. *)
+Theorem query_expr_equiv_of_ordered_observations :
+  forall env left right,
+    @query_expr_outputs T relname left = @query_expr_outputs T relname right ->
+    (exists rows, eval_query_expr env left (SqlSuccess rows)) ->
+    (forall error, ~ eval_query_expr env left (SqlError error)) ->
+    (forall error, ~ eval_query_expr env right (SqlError error)) ->
+    (forall left_rows,
+      eval_query_expr env left (SqlSuccess left_rows) ->
+      exists right_rows,
+        eval_query_expr env right (SqlSuccess right_rows) /\
+        @ordered_rows_equiv T left_rows right_rows) ->
+    (forall right_rows,
+      eval_query_expr env right (SqlSuccess right_rows) ->
+      exists left_rows,
+        eval_query_expr env left (SqlSuccess left_rows) /\
+        @ordered_rows_equiv T left_rows right_rows) ->
+    @query_expr_equiv T relname basesort instance unknown contains_nulls
+      symbol_runtime_error aggregate_runtime_error value_is_null
+      env left right.
+Proof.
+intros env left right Houtputs Hsuccess Hleft_safe Hright_safe Hforward Hbackward.
+unfold query_expr_equiv; split; [exact Houtputs |].
+unfold query_expr_observation_equiv.
+now apply successful_relation_equiv_intro.
+Qed.
+
+(** Convenient specialization for proofs where both evaluators expose the
+    exact same Rocq list representatives. *)
 Theorem query_expr_equiv_of_observations :
   forall env left right,
     @query_expr_outputs T relname left = @query_expr_outputs T relname right ->
@@ -388,9 +416,15 @@ Theorem query_expr_equiv_of_observations :
       env left right.
 Proof.
 intros env left right Houtputs Hsuccess Hleft_safe Hright_safe Hobservations.
-unfold query_expr_equiv; split; [exact Houtputs |].
-unfold query_expr_observation_equiv.
-now apply successful_relation_equiv_intro.
+apply query_expr_equiv_of_ordered_observations; try assumption.
+- intros rows Hrows.
+  exists rows; split.
+  + now apply (proj1 (Hobservations rows)).
+  + apply ordered_rows_equiv_refl.
+- intros rows Hrows.
+  exists rows; split.
+  + now apply (proj2 (Hobservations rows)).
+  + apply ordered_rows_equiv_refl.
 Qed.
 
 (** Introduction rule for exact error-preserving equivalence.  Unlike the
@@ -406,12 +440,12 @@ Theorem query_expr_outcome_equiv_of_observations :
       eval_query_expr env left (SqlSuccess left_rows) ->
       exists right_rows,
         eval_query_expr env right (SqlSuccess right_rows) /\
-        left_rows = right_rows) ->
+        @ordered_rows_equiv T left_rows right_rows) ->
     (forall right_rows,
       eval_query_expr env right (SqlSuccess right_rows) ->
       exists left_rows,
         eval_query_expr env left (SqlSuccess left_rows) /\
-        left_rows = right_rows) ->
+        @ordered_rows_equiv T left_rows right_rows) ->
     (forall error,
       eval_query_expr env left (SqlError error) <->
       eval_query_expr env right (SqlError error)) ->
@@ -465,7 +499,8 @@ Proof.
 intros env left_outputs right_outputs left_query right_query; split.
 - intro Hobservation.
   unfold query_expr_observation_equiv, successful_relation_equiv in Hobservation.
-  destruct Hobservation as [_ [Hleft_no_error [Hright_no_error Hrows_equiv]]].
+  destruct Hobservation as
+    [_ [Hleft_no_error [Hright_no_error [Hforward _]]]].
   apply bag_query_equiv_iff_success_and_bag_equality.
   assert (Hleft_safe : bag_query_runtime_error env left_query = None).
   {
@@ -492,7 +527,6 @@ intros env left_outputs right_outputs left_query right_query; split.
     (left_bag := @eval_query T relname basesort instance unknown contains_nulls
       env left_query).
   pose (left_rows := Febag.elements BTupleT left_bag).
-  specialize (Hrows_equiv left_rows) as [Hforward _].
   assert (Hleft_rows :
     eval_query_expr env (QExpr_Bag left_outputs left_query)
       (SqlSuccess left_rows)).
@@ -504,17 +538,27 @@ intros env left_outputs right_outputs left_query right_query; split.
     - unfold left_rows, left_bag, query_same_rows_as_bag, query_rows_bag.
       apply Febag.elements_mk_bag.
   }
-  specialize (Hforward Hleft_rows).
-  apply eval_query_expr_bag_success_iff in Hforward.
-  destruct Hforward as [right_bag [Hright_outcome Hright_rows]].
+  destruct (Hforward left_rows Hleft_rows)
+    as [right_rows [Hright_eval Hordered]].
+  apply eval_query_expr_bag_success_iff in Hright_eval.
+  destruct Hright_eval as [right_bag [Hright_outcome Hright_rows]].
   unfold eval_query_outcome, bag_query_runtime_error in Hright_outcome, Hright_safe.
   rewrite Hright_safe in Hright_outcome; inversion Hright_outcome; subst right_bag.
-  unfold query_same_rows_as_bag in Hright_rows.
-  eapply Febag.equal_trans.
-  + apply Febag.equal_sym.
-    unfold left_rows, left_bag, query_rows_bag.
+  assert (Hleft_rep : query_same_rows_as_bag left_rows left_bag).
+  {
+    unfold left_rows, left_bag, query_same_rows_as_bag, query_rows_bag.
     apply Febag.elements_mk_bag.
-  + exact Hright_rows.
+  }
+  apply query_same_rows_as_bag_iff_bag_eq in Hleft_rep.
+  apply query_same_rows_as_bag_iff_bag_eq in Hright_rows.
+  change (bag_eq T left_bag
+    (@eval_query T relname basesort instance unknown contains_nulls
+      env right_query)).
+  eapply bag_eq_trans.
+  + exact (bag_eq_sym Hleft_rep).
+  + eapply bag_eq_trans.
+    * exact (ordered_rows_equiv_implies_bag_eq Hordered).
+    * exact Hright_rows.
 - intro Hbag.
   apply bag_query_equiv_iff_success_and_bag_equality in Hbag.
   destruct Hbag as [Hleft_safe [Hright_safe Hbag]].
@@ -539,29 +583,34 @@ intros env left_outputs right_outputs left_query right_query; split.
     apply eval_query_expr_bag_error_iff in Herror.
     unfold eval_query_outcome, bag_query_runtime_error in Herror, Hright_safe.
     rewrite Hright_safe in Herror; discriminate.
-  + intro rows; split; intro Hrows.
-    * apply eval_query_expr_bag_success_iff in Hrows.
-      destruct Hrows as [left_bag [Hleft_outcome Hrows]].
-      unfold eval_query_outcome, bag_query_runtime_error in Hleft_outcome, Hleft_safe.
-      rewrite Hleft_safe in Hleft_outcome; inversion Hleft_outcome; subst left_bag.
-      apply eval_query_expr_bag_success_iff.
+  + intros rows Hrows.
+    apply eval_query_expr_bag_success_iff in Hrows.
+    destruct Hrows as [left_bag [Hleft_outcome Hrows]].
+    unfold eval_query_outcome, bag_query_runtime_error in Hleft_outcome, Hleft_safe.
+    rewrite Hleft_safe in Hleft_outcome; inversion Hleft_outcome; subst left_bag.
+    exists rows; split.
+    * apply eval_query_expr_bag_success_iff.
       exists (@eval_query T relname basesort instance unknown contains_nulls
         env right_query); split.
       -- unfold eval_query_outcome, bag_query_runtime_error in *.
          now rewrite Hright_safe.
       -- eapply query_same_rows_as_bag_bag_transport; [exact Hrows |].
          exact Hbag.
-    * apply eval_query_expr_bag_success_iff in Hrows.
-      destruct Hrows as [right_bag [Hright_outcome Hrows]].
-      unfold eval_query_outcome, bag_query_runtime_error in Hright_outcome, Hright_safe.
-      rewrite Hright_safe in Hright_outcome; inversion Hright_outcome; subst right_bag.
-      apply eval_query_expr_bag_success_iff.
+    * apply ordered_rows_equiv_refl.
+  + intros rows Hrows.
+    apply eval_query_expr_bag_success_iff in Hrows.
+    destruct Hrows as [right_bag [Hright_outcome Hrows]].
+    unfold eval_query_outcome, bag_query_runtime_error in Hright_outcome, Hright_safe.
+    rewrite Hright_safe in Hright_outcome; inversion Hright_outcome; subst right_bag.
+    exists rows; split.
+    * apply eval_query_expr_bag_success_iff.
       exists (@eval_query T relname basesort instance unknown contains_nulls
         env left_query); split.
       -- unfold eval_query_outcome, bag_query_runtime_error in *.
          now rewrite Hleft_safe.
       -- eapply query_same_rows_as_bag_bag_transport; [exact Hrows |].
          apply bag_eq_sym; exact Hbag.
+    * apply ordered_rows_equiv_refl.
 Qed.
 
 Theorem bag_query_expr_equiv_iff_bag_query_equiv :
@@ -645,6 +694,7 @@ Qed.
 Definition query_possible_bag_equiv
     (env : Env.env T) (left right : query_expr T relname) : Prop :=
   successful_relation_equiv
+    (bag_eq T)
     (outcome_alpha T (eval_query_expr env left))
     (outcome_alpha T (eval_query_expr env right)).
 
@@ -683,6 +733,52 @@ split; intros [Houtputs Hobservation]; split;
       env left right Hleft Hright)).
 - now apply (proj2
     (query_bag_effect_observation_equiv_iff_possible_bag_equiv
+      env left right Hleft Hright)).
+Qed.
+
+Definition query_possible_bag_outcome_equiv
+    (env : Env.env T) (left right : query_expr T relname) : Prop :=
+  outcome_relation_equiv
+    (bag_eq T)
+    (outcome_alpha T (eval_query_expr env left))
+    (outcome_alpha T (eval_query_expr env right)).
+
+Theorem query_bag_effect_outcome_observation_equiv_iff_possible_bag_equiv :
+  forall env left right,
+    query_expr_effect left = BagEffect ->
+    query_expr_effect right = BagEffect ->
+    (@query_expr_outcome_observation_equiv T relname basesort instance unknown
+       contains_nulls symbol_runtime_error aggregate_runtime_error value_is_null
+       env left right <->
+     query_possible_bag_outcome_equiv env left right).
+Proof.
+intros env left right Hleft Hright.
+unfold query_expr_outcome_observation_equiv,
+  query_possible_bag_outcome_equiv.
+apply outcome_relation_equiv_iff_outcome_alpha.
+- now apply query_expr_effect_sound.
+- now apply query_expr_effect_sound.
+Qed.
+
+Theorem query_bag_effect_typed_outcome_equiv_iff_possible_bag_equiv :
+  forall env left right,
+    query_expr_effect left = BagEffect ->
+    query_expr_effect right = BagEffect ->
+    (@query_expr_outcome_equiv T relname basesort instance unknown contains_nulls
+       symbol_runtime_error aggregate_runtime_error value_is_null
+       env left right <->
+     query_expr_outputs left = query_expr_outputs right /\
+     query_possible_bag_outcome_equiv env left right).
+Proof.
+intros env left right Hleft Hright.
+unfold query_expr_outcome_equiv.
+split; intros [Houtputs Hobservation]; split;
+  [exact Houtputs | | exact Houtputs |].
+- now apply (proj1
+    (query_bag_effect_outcome_observation_equiv_iff_possible_bag_equiv
+      env left right Hleft Hright)).
+- now apply (proj2
+    (query_bag_effect_outcome_observation_equiv_iff_possible_bag_equiv
       env left right Hleft Hright)).
 Qed.
 
@@ -1238,16 +1334,37 @@ Definition query_success_bags
     an enclosing order-insensitive operator continue with bag reasoning. *)
 Lemma query_success_bags_of_success_rel_equiv :
   forall env left right,
-    (forall rows,
-      eval_query_expr env left (SqlSuccess rows) <->
-      eval_query_expr env right (SqlSuccess rows)) ->
+    (forall left_rows,
+      eval_query_expr env left (SqlSuccess left_rows) ->
+      exists right_rows,
+        eval_query_expr env right (SqlSuccess right_rows) /\
+        @ordered_rows_equiv T left_rows right_rows) ->
+    (forall right_rows,
+      eval_query_expr env right (SqlSuccess right_rows) ->
+      exists left_rows,
+        eval_query_expr env left (SqlSuccess left_rows) /\
+        @ordered_rows_equiv T left_rows right_rows) ->
     rel_equiv
       (query_success_bags env left)
       (query_success_bags env right).
 Proof.
-intros env left right Hequiv.
-unfold query_success_bags.
-now apply alpha_congr.
+intros env left right Hforward Hbackward bag.
+unfold query_success_bags, alpha.
+split.
+- intros [left_rows [Hleft Hbag]].
+  destruct (Hforward left_rows Hleft)
+    as [right_rows [Hright Hrows]].
+  exists right_rows; split; [exact Hright |].
+  eapply bag_eq_trans.
+  + exact (bag_eq_sym (ordered_rows_equiv_implies_bag_eq Hrows)).
+  + exact Hbag.
+- intros [right_rows [Hright Hbag]].
+  destruct (Hbackward right_rows Hright)
+    as [left_rows [Hleft Hrows]].
+  exists left_rows; split; [exact Hleft |].
+  eapply bag_eq_trans.
+  + exact (ordered_rows_equiv_implies_bag_eq Hrows).
+  + exact Hbag.
 Qed.
 
 Lemma rows_bag_elements :

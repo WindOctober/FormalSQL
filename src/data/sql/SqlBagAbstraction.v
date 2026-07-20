@@ -10,7 +10,7 @@ Set Implicit Arguments.
 
 From Stdlib Require Import List.
 
-Require Import FiniteBag FiniteCollection FlatData SqlOutcome.
+Require Import OrderedSet FiniteBag FiniteCollection FlatData SqlOutcome.
 
 (** Ordered row-list outcomes are the single exact query semantics.  [alpha]
     maps them to possible bags; [gamma] forgets order by permutation closure
@@ -64,6 +64,51 @@ Qed.
 
 Definition rows_bag (rows : list tuple) : bagT :=
   Febag.mk_bag BTupleT rows.
+
+(** Exact query observations retain list order while comparing each SQL row
+    extensionally through [OTuple].  This deliberately ignores only the hidden
+    Rocq representation of a tuple; changing row order or multiplicity remains
+    observable. *)
+Definition ordered_rows_equiv (left right : list tuple) : Prop :=
+  Oeset.compare (mk_oelists (OTuple T)) left right = Eq.
+
+Lemma ordered_rows_equiv_refl :
+  forall rows, ordered_rows_equiv rows rows.
+Proof.
+intro rows; unfold ordered_rows_equiv.
+apply Oeset.compare_eq_refl.
+Qed.
+
+Lemma ordered_rows_equiv_sym :
+  forall left right,
+    ordered_rows_equiv left right -> ordered_rows_equiv right left.
+Proof.
+intros left right Hequiv; unfold ordered_rows_equiv in *.
+now apply Oeset.compare_eq_sym.
+Qed.
+
+Lemma ordered_rows_equiv_trans :
+  forall first second third,
+    ordered_rows_equiv first second ->
+    ordered_rows_equiv second third ->
+    ordered_rows_equiv first third.
+Proof.
+intros first second third Hfirst Hsecond; unfold ordered_rows_equiv in *.
+eapply Oeset.compare_eq_trans; eassumption.
+Qed.
+
+Lemma ordered_rows_equiv_implies_bag_eq :
+  forall left right,
+    ordered_rows_equiv left right ->
+    bag_eq (rows_bag left) (rows_bag right).
+Proof.
+intros left right Hequiv.
+unfold ordered_rows_equiv, mk_oelists in Hequiv; simpl in Hequiv.
+unfold bag_eq, rows_bag.
+rewrite Febag.nb_occ_equal; intro row.
+rewrite 2 Febag.nb_occ_mk_bag.
+now apply Oeset.nb_occ_eq_2.
+Qed.
 
 (** A possible-bag relation is semantic only when membership is invariant under
     [bag_eq].  This condition is essential because [bagT] is not a quotient. *)
@@ -427,13 +472,13 @@ Theorem successful_relation_equiv_iff_outcome_alpha :
   forall left right,
     OutcomeBagClosed left ->
     OutcomeBagClosed right ->
-    (successful_relation_equiv left right <->
-     successful_relation_equiv
+    (successful_relation_equiv ordered_rows_equiv left right <->
+     successful_relation_equiv bag_eq
          (outcome_alpha left) (outcome_alpha right)).
 Proof.
 intros left right Hleft_closed Hright_closed.
 split.
-- intros [[rows Hrows] [Hleft_error [Hright_error Hsuccess]]].
+- intros [[rows Hrows] [Hleft_error [Hright_error [Hforward Hbackward]]]].
   unfold successful_relation_equiv.
   split.
   + exists (rows_bag rows); simpl.
@@ -444,13 +489,28 @@ split.
     * split.
       -- intros error Herror; simpl in Herror.
          exact (Hright_error error Herror).
-      -- intro bag; simpl.
-         exact
-           (alpha_congr
-             (left := fun rows => left (SqlSuccess rows))
-             (right := fun rows => right (SqlSuccess rows))
-             Hsuccess bag).
-- intros [[bag Hbag] [Hleft_error [Hright_error Hsuccess]]].
+      -- split.
+         ++ intros left_bag [left_rows [Hleft_rows Hleft_bag]].
+            destruct (Hforward left_rows Hleft_rows)
+              as [right_rows [Hright_rows Hrows_equiv]].
+            exists left_bag; split.
+            ** simpl. exists right_rows; split; [exact Hright_rows |].
+               eapply bag_eq_trans.
+               --- exact
+                     (bag_eq_sym
+                       (ordered_rows_equiv_implies_bag_eq Hrows_equiv)).
+               --- exact Hleft_bag.
+            ** apply bag_eq_refl.
+         ++ intros right_bag [right_rows [Hright_rows Hright_bag]].
+            destruct (Hbackward right_rows Hright_rows)
+              as [left_rows [Hleft_rows Hrows_equiv]].
+            exists right_bag; split.
+            ** simpl. exists left_rows; split; [exact Hleft_rows |].
+               eapply bag_eq_trans.
+               --- exact (ordered_rows_equiv_implies_bag_eq Hrows_equiv).
+               --- exact Hright_bag.
+            ** apply bag_eq_refl.
+- intros [[bag Hbag] [Hleft_error [Hright_error [Hforward Hbackward]]]].
   unfold successful_relation_equiv.
   simpl in Hbag.
   destruct Hbag as [rows [Hrows _]].
@@ -461,10 +521,124 @@ split.
   + split.
     * intros error Herror.
       apply (Hright_error error); exact Herror.
-    * apply (proj2
-        (bag_closed_rel_equiv_iff_alpha_rel_equiv
-          Hleft_closed Hright_closed)).
-      intro possible_bag; exact (Hsuccess possible_bag).
+    * split.
+      -- intros left_rows Hleft_rows.
+         assert (Hleft_bag : outcome_alpha left (SqlSuccess (rows_bag left_rows))).
+         {
+           simpl. exists left_rows; split; [exact Hleft_rows | apply bag_eq_refl].
+         }
+         destruct (Hforward (rows_bag left_rows) Hleft_bag)
+           as [right_bag [[right_rows [Hright_rows Hright_bag]] Hbags]].
+         assert (Hrows_bag : bag_eq (rows_bag right_rows) (rows_bag left_rows)).
+         {
+           eapply bag_eq_trans; [exact Hright_bag |].
+           now apply bag_eq_sym.
+         }
+         exists left_rows; split.
+         ++ exact (proj1 (Hright_closed _ _ Hrows_bag) Hright_rows).
+         ++ apply ordered_rows_equiv_refl.
+      -- intros right_rows Hright_rows.
+         assert (Hright_bag : outcome_alpha right (SqlSuccess (rows_bag right_rows))).
+         {
+           simpl. exists right_rows; split; [exact Hright_rows | apply bag_eq_refl].
+         }
+         destruct (Hbackward (rows_bag right_rows) Hright_bag)
+           as [left_bag [[left_rows [Hleft_rows Hleft_bag]] Hbags]].
+         assert (Hrows_bag : bag_eq (rows_bag left_rows) (rows_bag right_rows)).
+         {
+           eapply bag_eq_trans; [exact Hleft_bag | exact Hbags].
+         }
+         exists right_rows; split.
+         ++ exact (proj1 (Hleft_closed _ _ Hrows_bag) Hleft_rows).
+         ++ apply ordered_rows_equiv_refl.
+Qed.
+
+(** The same abstraction is complete for error-preserving equivalence.  Row
+    lists are quotiented only by ordered extensional row equality, while SQL
+    runtime-error categories remain exact outer observations. *)
+Theorem outcome_relation_equiv_iff_outcome_alpha :
+  forall left right,
+    OutcomeBagClosed left ->
+    OutcomeBagClosed right ->
+    (outcome_relation_equiv ordered_rows_equiv left right <->
+     outcome_relation_equiv bag_eq
+       (outcome_alpha left) (outcome_alpha right)).
+Proof.
+intros left right Hleft_closed Hright_closed.
+split.
+- intros [Hleft_outcome [Hright_outcome [Hforward [Hbackward Herrors]]]].
+  apply outcome_relation_equiv_intro.
+  + destruct Hleft_outcome as [[left_rows | error] Houtcome].
+    * exists (SqlSuccess (rows_bag left_rows)); simpl.
+      exists left_rows; split; [exact Houtcome | apply bag_eq_refl].
+    * now exists (SqlError error).
+  + destruct Hright_outcome as [[right_rows | error] Houtcome].
+    * exists (SqlSuccess (rows_bag right_rows)); simpl.
+      exists right_rows; split; [exact Houtcome | apply bag_eq_refl].
+    * now exists (SqlError error).
+  + intros left_bag [left_rows [Hleft_rows Hleft_bag]].
+    destruct (Hforward left_rows Hleft_rows)
+      as [right_rows [Hright_rows Hrows_equiv]].
+    exists left_bag; split.
+    * simpl. exists right_rows; split; [exact Hright_rows |].
+      eapply bag_eq_trans.
+      -- exact
+           (bag_eq_sym
+             (ordered_rows_equiv_implies_bag_eq Hrows_equiv)).
+      -- exact Hleft_bag.
+    * apply bag_eq_refl.
+  + intros right_bag [right_rows [Hright_rows Hright_bag]].
+    destruct (Hbackward right_rows Hright_rows)
+      as [left_rows [Hleft_rows Hrows_equiv]].
+    exists right_bag; split.
+    * simpl. exists left_rows; split; [exact Hleft_rows |].
+      eapply bag_eq_trans.
+      -- exact (ordered_rows_equiv_implies_bag_eq Hrows_equiv).
+      -- exact Hright_bag.
+    * apply bag_eq_refl.
+  + intro error; simpl; apply Herrors.
+- intros [Hleft_outcome [Hright_outcome [Hforward [Hbackward Herrors]]]].
+  apply outcome_relation_equiv_intro.
+  + destruct Hleft_outcome as [[left_bag | error] Houtcome].
+    * simpl in Houtcome.
+      destruct Houtcome as [left_rows [Hleft_rows _]].
+      now exists (SqlSuccess left_rows).
+    * now exists (SqlError error).
+  + destruct Hright_outcome as [[right_bag | error] Houtcome].
+    * simpl in Houtcome.
+      destruct Houtcome as [right_rows [Hright_rows _]].
+      now exists (SqlSuccess right_rows).
+    * now exists (SqlError error).
+  + intros left_rows Hleft_rows.
+    assert (Hleft_bag : outcome_alpha left (SqlSuccess (rows_bag left_rows))).
+    {
+      simpl. exists left_rows; split; [exact Hleft_rows | apply bag_eq_refl].
+    }
+    destruct (Hforward (rows_bag left_rows) Hleft_bag)
+      as [right_bag [[right_rows [Hright_rows Hright_bag]] Hbags]].
+    assert (Hrows_bag : bag_eq (rows_bag right_rows) (rows_bag left_rows)).
+    {
+      eapply bag_eq_trans; [exact Hright_bag |].
+      now apply bag_eq_sym.
+    }
+    exists left_rows; split.
+    * exact (proj1 (Hright_closed _ _ Hrows_bag) Hright_rows).
+    * apply ordered_rows_equiv_refl.
+  + intros right_rows Hright_rows.
+    assert (Hright_bag : outcome_alpha right (SqlSuccess (rows_bag right_rows))).
+    {
+      simpl. exists right_rows; split; [exact Hright_rows | apply bag_eq_refl].
+    }
+    destruct (Hbackward (rows_bag right_rows) Hright_bag)
+      as [left_bag [[left_rows [Hleft_rows Hleft_bag]] Hbags]].
+    assert (Hrows_bag : bag_eq (rows_bag left_rows) (rows_bag right_rows)).
+    {
+      eapply bag_eq_trans; [exact Hleft_bag | exact Hbags].
+    }
+    exists right_rows; split.
+    * exact (proj1 (Hleft_closed _ _ Hrows_bag) Hleft_rows).
+    * apply ordered_rows_equiv_refl.
+  + intro error; simpl in *; apply Herrors.
 Qed.
 
 End Sec.

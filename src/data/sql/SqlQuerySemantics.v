@@ -1355,6 +1355,7 @@ with eval_join_bag_outcome
 Definition query_expr_observation_equiv
     (env : Env.env T) (left right : query_expr T relname) : Prop :=
   successful_relation_equiv
+    (@ordered_rows_equiv T)
     (eval_query_expr_outcome env left)
     (eval_query_expr_outcome env right).
 
@@ -1372,7 +1373,7 @@ Definition query_expr_equiv
     are exact, and every runtime-error category must be exposed by both sides. *)
 Definition query_expr_outcome_observation_equiv
     (env : Env.env T) (left right : query_expr T relname) : Prop :=
-  outcome_relation_equiv eq
+  outcome_relation_equiv (@ordered_rows_equiv T)
     (eval_query_expr_outcome env left)
     (eval_query_expr_outcome env right).
 
@@ -1382,6 +1383,31 @@ Definition query_expr_outcome_equiv
     (env : Env.env T) (left right : query_expr T relname) : Prop :=
   query_expr_outputs left = query_expr_outputs right /\
   query_expr_outcome_observation_equiv env left right.
+
+(** Safe equivalence is a stronger certificate than error-preserving
+    equivalence.  This bridge lets a proof agent choose the safe route when it
+    can discharge safety; no external classifier is trusted to make that
+    semantic decision. *)
+Lemma query_expr_observation_equiv_implies_outcome_observation_equiv :
+  forall env left right,
+    query_expr_observation_equiv env left right ->
+    query_expr_outcome_observation_equiv env left right.
+Proof.
+intros env left right Hequiv.
+unfold query_expr_observation_equiv,
+  query_expr_outcome_observation_equiv in *.
+now apply successful_relation_equiv_implies_outcome_relation_equiv.
+Qed.
+
+Lemma query_expr_equiv_implies_outcome_equiv :
+  forall env left right,
+    query_expr_equiv env left right ->
+    query_expr_outcome_equiv env left right.
+Proof.
+intros env left right [Houtputs Hobservations].
+split; [exact Houtputs |].
+now apply query_expr_observation_equiv_implies_outcome_observation_equiv.
+Qed.
 
 (** A query program is an ordered, stateless sequence of read-only query
     expressions evaluated against the same database and outer environment.
@@ -1445,6 +1471,20 @@ Lemma query_program_outcome_equiv_cons :
     query_program_outcome_equiv env left_program right_program.
 Proof.
 reflexivity.
+Qed.
+
+Lemma query_program_equiv_implies_outcome_equiv :
+  forall env left right,
+    query_program_equiv env left right ->
+    query_program_outcome_equiv env left right.
+Proof.
+intros env left; induction left as [| left_query left_program IH];
+  intros [| right_query right_program] Hequiv; cbn in *; try contradiction.
+- exact I.
+- destruct Hequiv as [Hquery Hprogram].
+  split.
+  + now apply query_expr_equiv_implies_outcome_equiv.
+  + now apply IH.
 Qed.
 
 Lemma query_program_equiv_length :
