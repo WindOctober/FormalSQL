@@ -2,7 +2,7 @@
 (**                                                                                 *)
 (**                          The SQLFormalSemantics Library                         *)
 (**                                                                                 *)
-(**             Effect soundness and exact bag-abstraction reuse bridges           *)
+(**        Order-behavior soundness and observable bag-abstraction bridges         *)
 (**                                                                                 *)
 (************************************************************************************)
 
@@ -12,7 +12,7 @@ From Stdlib Require Import Bool List Arith ZArith Sorting.Permutation.
 
 Require Import OrderedSet ListFacts FiniteSet FiniteBag FiniteCollection Join NJoinTuples
         FlatData Env Bool3 Formula
-        SqlAlgebra SqlOutcome SqlErrorSemantics SqlOrder SqlListFacts
+        SqlOutcome SqlErrorSemantics SqlOrder SqlListFacts
         SqlBagAbstraction SqlQuerySyntax SqlQuerySemantics.
 
 (** Ordered row-list outcomes are the single exact query semantics.  [alpha]
@@ -37,7 +37,6 @@ Local Definition bagT := Febag.bag BTupleT.
 Hypothesis basesort : relname -> setA.
 Hypothesis instance : relname -> bagT.
 Hypothesis unknown : Bool.b (B T).
-Hypothesis contains_nulls : tuple -> bool.
 Hypothesis symbol_runtime_error :
   scalar_operator T -> list (option sql_runtime_error * value) ->
   option sql_runtime_error.
@@ -47,74 +46,19 @@ Hypothesis aggregate_runtime_error :
 Hypothesis value_is_null : value -> bool.
 
 Local Abbreviation eval_query_expr :=
-  (@eval_query_expr_outcome T relname basesort instance unknown contains_nulls
+  (@eval_query_expr_outcome T relname basesort instance unknown
     symbol_runtime_error aggregate_runtime_error value_is_null).
 
 Local Abbreviation eval_group_bag :=
-  (@eval_group_bag_outcome T relname basesort instance unknown contains_nulls
+  (@eval_group_bag_outcome T relname basesort instance unknown
     symbol_runtime_error aggregate_runtime_error value_is_null).
 
 Local Abbreviation eval_grouping_sets_bag :=
-  (@eval_grouping_sets_bag_outcome T relname basesort instance unknown
-    contains_nulls symbol_runtime_error aggregate_runtime_error value_is_null).
+  (@eval_grouping_sets_bag_outcome T relname basesort instance unknown symbol_runtime_error aggregate_runtime_error value_is_null).
 
 Local Abbreviation eval_join_bag :=
-  (@eval_join_bag_outcome T relname basesort instance unknown contains_nulls
+  (@eval_join_bag_outcome T relname basesort instance unknown
     symbol_runtime_error aggregate_runtime_error value_is_null).
-
-(** Success-only equivalence for the deterministic bag-algebra fragment.
-    [QExpr_Bag] reuses this definition directly; no second list-query syntax
-    or evaluator is interposed. *)
-Definition bag_query_runtime_error
-    (env : Env.env T) (q : @query T relname) : option sql_runtime_error :=
-  @eval_query_runtime_error T relname basesort instance unknown contains_nulls
-    symbol_runtime_error aggregate_runtime_error env q.
-
-Definition bag_query_equiv
-    (env : Env.env T)
-    (q1 q2 : @query T relname) : Prop :=
-  successful_outcome_equiv
-    (fun left right => left =BE= right)
-    (@eval_query_outcome T relname basesort instance unknown contains_nulls
-      symbol_runtime_error aggregate_runtime_error env q1)
-    (@eval_query_outcome T relname basesort instance unknown contains_nulls
-      symbol_runtime_error aggregate_runtime_error env q2).
-
-Lemma bag_query_equiv_iff_success_and_bag_equality :
-  forall env q1 q2,
-    bag_query_equiv env q1 q2 <->
-    bag_query_runtime_error env q1 = None /\
-    bag_query_runtime_error env q2 = None /\
-    @eval_query T relname basesort instance unknown contains_nulls env q1 =BE=
-    @eval_query T relname basesort instance unknown contains_nulls env q2.
-Proof.
-intros env q1 q2.
-unfold bag_query_equiv, eval_query_outcome, bag_query_runtime_error,
-  successful_outcome_equiv.
-destruct (@eval_query_runtime_error T relname basesort instance unknown contains_nulls
-  symbol_runtime_error aggregate_runtime_error env q1) eqn:Hleft;
-destruct (@eval_query_runtime_error T relname basesort instance unknown contains_nulls
-  symbol_runtime_error aggregate_runtime_error env q2) eqn:Hright; simpl.
-- split; intro H; [contradiction | destruct H as [H _]; discriminate].
-- split; intro H; [contradiction | destruct H as [H _]; discriminate].
-- split; intro H; [contradiction | destruct H as [_ [H _]]; discriminate].
-- split; intro H.
-  + repeat split; try reflexivity; exact H.
-  + now destruct H as [_ [_ H]].
-Qed.
-
-Lemma bag_query_equiv_intro :
-  forall env q1 q2,
-    bag_query_runtime_error env q1 = None ->
-    bag_query_runtime_error env q2 = None ->
-    @eval_query T relname basesort instance unknown contains_nulls env q1 =BE=
-    @eval_query T relname basesort instance unknown contains_nulls env q2 ->
-    bag_query_equiv env q1 q2.
-Proof.
-intros env q1 q2 Hsafe1 Hsafe2 Hequal.
-apply bag_query_equiv_iff_success_and_bag_equality.
-repeat split; assumption.
-Qed.
 
 Lemma query_error_outcome_iff :
   forall env attributes error outcome,
@@ -132,6 +76,37 @@ Corollary query_error_has_no_success :
 Proof.
 intros env attributes error rows Heval.
 apply query_error_outcome_iff in Heval; discriminate.
+Qed.
+
+Lemma eval_query_expr_table_success_iff :
+  forall env outputs table rows,
+    eval_query_expr env (QExpr_Table outputs table) (SqlSuccess rows) <->
+    query_same_rows_as_bag rows
+      (@query_table_bag T relname basesort instance outputs table).
+Proof.
+intros env outputs table rows; split.
+- intro Heval; inversion Heval; subst; assumption.
+- now apply EQuery_Table.
+Qed.
+
+Corollary query_table_has_no_error :
+  forall env outputs table error,
+    ~ eval_query_expr env (QExpr_Table outputs table) (SqlError error).
+Proof.
+intros env outputs table error Heval; inversion Heval.
+Qed.
+
+Lemma query_table_has_success :
+  forall env outputs table,
+    exists rows,
+      eval_query_expr env (QExpr_Table outputs table) (SqlSuccess rows).
+Proof.
+intros env outputs table.
+exists (Febag.elements BTupleT
+  (@query_table_bag T relname basesort instance outputs table)).
+apply EQuery_Table.
+unfold query_same_rows_as_bag, query_rows_bag.
+apply Febag.elements_mk_bag.
 Qed.
 
 (** The row adapter is sequential over the exact child list: a head error is
@@ -166,7 +141,7 @@ simpl; now rewrite Hrow, Hrows.
 Qed.
 
 (** Pointwise successful row mapping respects input permutations.  This does
-    not collapse [QExpr_RowMap] to a bag effect: its exact observations still
+    not turn [QExpr_RowMap] into a [BagReset]: its exact observations still
     retain the chosen child-list order. *)
 Lemma row_map_rows_outcome_success_permutation :
   forall row_map left right mapped_left,
@@ -204,9 +179,251 @@ revert mapped_left; induction Hperm; intros mapped_left Hleft.
   eapply Permutation_trans; eassumption.
 Qed.
 
+(** Extract the successful pointwise result selected by a row adapter.  The
+    fallback branch is irrelevant under a successful list evaluation, but
+    makes the extracted mapper total and lets us use the standard
+    [Permutation_map_inv] lemma. *)
+Definition row_map_success_value
+    (row_map : tuple -> sql_outcome tuple) (row : tuple) : tuple :=
+  match row_map row with
+  | SqlSuccess mapped_row => mapped_row
+  | SqlError _ => row
+  end.
+
+Lemma row_map_rows_outcome_success_map :
+  forall row_map input output,
+    @row_map_rows_outcome T row_map input = SqlSuccess output ->
+    output = map (row_map_success_value row_map) input.
+Proof.
+intros row_map input; induction input as [|row input IH]; intros output Heval.
+- simpl in Heval; now inversion Heval.
+- simpl in Heval.
+  destruct (row_map row) as [mapped_row | error] eqn:Hrow;
+    [|discriminate].
+  destruct (@row_map_rows_outcome T row_map input)
+    as [mapped_input | tail_error] eqn:Hinput; [|discriminate].
+  inversion Heval; subst; simpl.
+  unfold row_map_success_value; rewrite Hrow.
+  f_equal; now apply IH.
+Qed.
+
+(** Every concrete permutation of a successful adapter output is obtained by
+    applying the adapter to a corresponding concrete permutation of its input.
+    No setoid compatibility of the callback is needed: exactly the same Rocq
+    rows, and therefore exactly the same callback results, are reused. *)
+Lemma row_map_rows_outcome_success_output_permutation :
+  forall row_map input output desired,
+    @row_map_rows_outcome T row_map input = SqlSuccess output ->
+    Permutation output desired ->
+    exists permuted_input,
+      Permutation input permuted_input /\
+      @row_map_rows_outcome T row_map permuted_input = SqlSuccess desired.
+Proof.
+intros row_map input output desired Heval Hpermutation.
+pose proof
+  (row_map_rows_outcome_success_map
+    row_map input (output := output) Heval) as Houtput.
+assert (Hmapped :
+  Permutation desired (map (row_map_success_value row_map) input)).
+{
+  rewrite <- Houtput; now apply Permutation_sym.
+}
+destruct (Permutation_map_inv
+  (row_map_success_value row_map) input Hmapped)
+  as [permuted_input [Hdesired Hinput]].
+exists permuted_input; split; [exact Hinput |].
+destruct (row_map_rows_outcome_success_permutation
+  row_map Hinput Heval)
+  as [mapped [Heval' _]].
+pose proof
+  (row_map_rows_outcome_success_map
+    row_map permuted_input (output := mapped) Heval')
+  as Hmapped'.
+rewrite Hdesired, <- Hmapped'.
+exact Heval'.
+Qed.
+
+(** Projection is the built-in row adapter obtained by pairing its runtime
+    check with the ordinary projection function. *)
+Definition project_row_outcome
+    (env : Env.env T) (select_list : _select_list T) (row : tuple)
+    : sql_outcome tuple :=
+  match @eval_select_list_runtime_error T
+          symbol_runtime_error aggregate_runtime_error
+          (env_t T env row) select_list with
+  | Some error => SqlError error
+  | None =>
+      SqlSuccess
+        (projection T (env_t T env row) (@Select_List T select_list))
+  end.
+
+Lemma project_rows_outcome_as_row_map :
+  forall env select_list rows,
+    @project_rows_outcome T symbol_runtime_error aggregate_runtime_error
+      env select_list rows =
+    @row_map_rows_outcome T (project_row_outcome env select_list) rows.
+Proof.
+intros env select_list rows; induction rows as [|row rows IH]; simpl;
+  [reflexivity |].
+unfold project_row_outcome.
+destruct (@eval_select_list_runtime_error T
+  symbol_runtime_error aggregate_runtime_error
+  (env_t T env row) select_list); [reflexivity |].
+now rewrite IH.
+Qed.
+
+Lemma project_rows_outcome_success_output_permutation :
+  forall env select_list input output desired,
+    @project_rows_outcome T symbol_runtime_error aggregate_runtime_error
+      env select_list input = SqlSuccess output ->
+    Permutation output desired ->
+    exists permuted_input,
+      Permutation input permuted_input /\
+      @project_rows_outcome T symbol_runtime_error aggregate_runtime_error
+        env select_list permuted_input = SqlSuccess desired.
+Proof.
+intros env select_list input output desired Heval Hpermutation.
+rewrite project_rows_outcome_as_row_map in Heval.
+destruct (row_map_rows_outcome_success_output_permutation
+  (project_row_outcome env select_list) input Heval Hpermutation)
+  as [permuted_input [Hinput Hproject]].
+exists permuted_input; split; [exact Hinput |].
+now rewrite project_rows_outcome_as_row_map.
+Qed.
+
+(** Per-occurrence witnesses used to rearrange a successful relational filter.
+    They retain the chosen formula derivation, so the argument does not assume
+    formula determinism or extensionality. *)
+Definition filter_row_accepts
+    (env : Env.env T) (formula : formula_expr T relname) (row : tuple) : Prop :=
+  exists truth,
+    @eval_formula_expr_outcome T relname basesort instance unknown
+      symbol_runtime_error aggregate_runtime_error value_is_null
+      (env_t T env row) formula (SqlSuccess truth) /\
+    Bool.is_true (B T) truth = true.
+
+Definition filter_row_rejects
+    (env : Env.env T) (formula : formula_expr T relname) (row : tuple) : Prop :=
+  exists truth,
+    @eval_formula_expr_outcome T relname basesort instance unknown
+      symbol_runtime_error aggregate_runtime_error value_is_null
+      (env_t T env row) formula (SqlSuccess truth) /\
+    Bool.is_true (B T) truth = false.
+
+Lemma filter_rows_all_reject_success_empty :
+  forall env formula rows,
+    Forall (filter_row_rejects env formula) rows ->
+    @eval_filter_rows_outcome T relname basesort instance unknown
+      symbol_runtime_error aggregate_runtime_error value_is_null
+      env formula rows (SqlSuccess nil).
+Proof.
+intros env formula rows Hrows; induction Hrows as [|row rows Hrow Hrows IH].
+- constructor.
+- destruct Hrow as [truth [Hformula Hreject]].
+  replace (SqlSuccess nil) with
+    (@filter_cons_outcome T truth row (SqlSuccess nil)).
+  + now eapply EFilterRows_Cons.
+  + unfold filter_cons_outcome; now rewrite Hreject.
+Qed.
+
+Lemma filter_rows_accepts_then_rejects_success :
+  forall env formula accepted rejected,
+    Forall (filter_row_accepts env formula) accepted ->
+    Forall (filter_row_rejects env formula) rejected ->
+    @eval_filter_rows_outcome T relname basesort instance unknown
+      symbol_runtime_error aggregate_runtime_error value_is_null
+      env formula (accepted ++ rejected) (SqlSuccess accepted).
+Proof.
+intros env formula accepted; induction accepted as [|row accepted IH];
+  intros rejected Haccepted Hrejected.
+- simpl; now apply filter_rows_all_reject_success_empty.
+- inversion Haccepted as [|? ? Hrow Htail]; subst.
+  destruct Hrow as [truth [Hformula Haccept]].
+  simpl.
+  replace (SqlSuccess (row :: accepted)) with
+    (@filter_cons_outcome T truth row (SqlSuccess accepted)).
+  + eapply EFilterRows_Cons; [exact Hformula |].
+    now apply IH.
+  + unfold filter_cons_outcome; now rewrite Haccept.
+Qed.
+
+(** A successful filter derivation partitions the concrete input occurrences
+    into its exact output rows and exact rejected rows. *)
+Lemma eval_filter_rows_success_partition :
+  forall env formula input output,
+    @eval_filter_rows_outcome T relname basesort instance unknown
+      symbol_runtime_error aggregate_runtime_error value_is_null
+      env formula input (SqlSuccess output) ->
+    exists rejected,
+      Permutation input (output ++ rejected) /\
+      Forall (filter_row_accepts env formula) output /\
+      Forall (filter_row_rejects env formula) rejected.
+Proof.
+intros env formula input; induction input as [|row input IH];
+  intros output Heval.
+- inversion Heval; subst.
+  exists nil; repeat split; constructor.
+- inversion Heval; subst.
+  match goal with
+  | Htail : @eval_filter_rows_outcome _ _ _ _ _ _ _ _ _ _ input ?tail |- _ =>
+      destruct tail as [tail_output | tail_error] eqn:Htail_outcome
+  end; simpl in *; try discriminate.
+  match goal with
+  | truth : Bool.b (B T) |- _ =>
+      destruct (Bool.is_true (B T) truth) eqn:Htruth
+  end; simpl in *; subst.
+  all: match goal with
+  | Hresult : SqlSuccess ?result = SqlSuccess ?output |- _ =>
+      inversion Hresult; subst; clear Hresult
+  end.
+  all: match goal with
+  | Htail : @eval_filter_rows_outcome _ _ _ _ _ _ _ _ _ _ ?tail_rows
+      (SqlSuccess ?tail_output) |- _ =>
+      destruct (IH tail_output Htail)
+        as [rejected [Hpermutation [Haccepted Hrejected]]]
+  end.
+  + exists rejected; repeat split.
+    * simpl; now apply perm_skip.
+    * constructor; [|exact Haccepted].
+      eexists; split; eassumption.
+    * exact Hrejected.
+  + exists (row :: rejected); repeat split.
+    * eapply Permutation_trans with
+        (l' := row :: (output ++ rejected)).
+      -- now apply perm_skip.
+      -- change (Permutation ((row :: output) ++ rejected)
+           (output ++ row :: rejected)).
+         apply Permutation_middle.
+    * exact Haccepted.
+    * constructor; [|exact Hrejected].
+      eexists; split; eassumption.
+Qed.
+
+Lemma eval_filter_rows_success_output_permutation :
+  forall env formula input output desired,
+    @eval_filter_rows_outcome T relname basesort instance unknown
+      symbol_runtime_error aggregate_runtime_error value_is_null
+      env formula input (SqlSuccess output) ->
+    Permutation output desired ->
+    exists permuted_input,
+      Permutation input permuted_input /\
+      @eval_filter_rows_outcome T relname basesort instance unknown
+        symbol_runtime_error aggregate_runtime_error value_is_null
+        env formula permuted_input (SqlSuccess desired).
+Proof.
+intros env formula input output desired Heval Houtput.
+destruct (eval_filter_rows_success_partition Heval)
+  as [rejected [Hinput [Haccepted Hrejected]]].
+exists (desired ++ rejected); split.
+- eapply Permutation_trans; [exact Hinput |].
+  now apply Permutation_app_tail.
+- apply filter_rows_accepts_then_rejects_success; [|exact Hrejected].
+  eapply Permutation_Forall; [exact Houtput | exact Haccepted].
+Qed.
+
 Lemma filter_rows_true_success :
   forall env rows,
-    @eval_filter_rows_outcome T relname basesort instance unknown contains_nulls
+    @eval_filter_rows_outcome T relname basesort instance unknown
       symbol_runtime_error aggregate_runtime_error value_is_null
       env FExpr_True rows (SqlSuccess rows).
 Proof.
@@ -223,7 +440,7 @@ Qed.
 
 Corollary filter_rows_true_has_no_error :
   forall env rows error,
-    ~ @eval_filter_rows_outcome T relname basesort instance unknown contains_nulls
+    ~ @eval_filter_rows_outcome T relname basesort instance unknown
         symbol_runtime_error aggregate_runtime_error value_is_null
         env FExpr_True rows (SqlError error).
 Proof.
@@ -231,12 +448,12 @@ intros env rows; induction rows as [| row rows IH]; intros error Heval.
 - inversion Heval.
 - inversion Heval; subst.
   + match goal with
-    | Htrue : @eval_formula_expr_outcome _ _ _ _ _ _ _ _ _ _
+    | Htrue : @eval_formula_expr_outcome _ _ _ _ _ _ _ _ _
         FExpr_True (SqlError _) |- _ =>
         inversion Htrue
     end.
   + match goal with
-    | Htail : @eval_filter_rows_outcome _ _ _ _ _ _ _ _ _ _
+    | Htail : @eval_filter_rows_outcome _ _ _ _ _ _ _ _ _
         FExpr_True rows ?tail |- _ =>
         destruct tail as [tail_rows | tail_error]
     end.
@@ -250,11 +467,11 @@ Qed.
     FALSE and UNKNOWN. *)
 Lemma filter_rows_single_nontrue_success_empty :
   forall env formula row truth,
-    @eval_formula_expr_outcome T relname basesort instance unknown contains_nulls
+    @eval_formula_expr_outcome T relname basesort instance unknown
       symbol_runtime_error aggregate_runtime_error value_is_null
       (env_t T env row) formula (SqlSuccess truth) ->
     Bool.is_true (B T) truth = false ->
-    @eval_filter_rows_outcome T relname basesort instance unknown contains_nulls
+    @eval_filter_rows_outcome T relname basesort instance unknown
       symbol_runtime_error aggregate_runtime_error value_is_null
       env formula (row :: nil) (SqlSuccess nil).
 Proof.
@@ -287,7 +504,7 @@ Qed.
 Lemma query_nested_filter_nontrue_skips_outer :
   forall env lower risky input row truth,
     eval_query_expr env input (SqlSuccess (row :: nil)) ->
-    @eval_formula_expr_outcome T relname basesort instance unknown contains_nulls
+    @eval_formula_expr_outcome T relname basesort instance unknown
       symbol_runtime_error aggregate_runtime_error value_is_null
       (env_t T env row) lower (SqlSuccess truth) ->
     Bool.is_true (B T) truth = false ->
@@ -341,33 +558,204 @@ apply query_same_rows_as_bag_iff_bag_eq.
 eapply bag_eq_trans; [exact Hrows | exact Heq].
 Qed.
 
-(** Every syntactic reset point classified [BagEffect] is closed under changing
+Lemma concrete_permutation_rows_bag_eq :
+  forall first second,
+    Permutation first second ->
+    bag_eq T (rows_bag T first) (rows_bag T second).
+Proof.
+intros first second Hpermutation.
+unfold bag_eq, rows_bag.
+rewrite Febag.nb_occ_equal; intro row.
+rewrite 2 Febag.nb_occ_mk_bag.
+now apply permutation_preserves_oeset_occurrences.
+Qed.
+
+Lemma eval_query_expr_project_success_iff :
+  forall env select_list input output,
+    eval_query_expr env (QExpr_Project select_list input) (SqlSuccess output) <->
+    exists input_rows,
+      eval_query_expr env input (SqlSuccess input_rows) /\
+      @project_rows_outcome T symbol_runtime_error aggregate_runtime_error
+        env select_list input_rows = SqlSuccess output.
+Proof.
+intros env select_list input output; split.
+- intro Heval; inversion Heval; subst.
+  eexists; split; [eassumption | reflexivity].
+- intros [input_rows [Hinput Hproject]].
+  rewrite <- Hproject.
+  now apply EQuery_ProjectRows.
+Qed.
+
+Lemma eval_query_expr_row_map_success_iff :
+  forall env output_attributes row_map input output,
+    eval_query_expr env
+      (QExpr_RowMap output_attributes row_map input) (SqlSuccess output) <->
+    exists input_rows,
+      eval_query_expr env input (SqlSuccess input_rows) /\
+      @row_map_rows_outcome T row_map input_rows = SqlSuccess output.
+Proof.
+intros env output_attributes row_map input output; split.
+- intro Heval; inversion Heval; subst.
+  eexists; split; [eassumption | reflexivity].
+- intros [input_rows [Hinput Hrow_map]].
+  rewrite <- Hrow_map.
+  now apply EQuery_RowMapRows.
+Qed.
+
+Lemma eval_query_expr_filter_success_iff :
+  forall env formula input output,
+    eval_query_expr env (QExpr_Filter formula input) (SqlSuccess output) <->
+    exists input_rows,
+      eval_query_expr env input (SqlSuccess input_rows) /\
+      @eval_filter_rows_outcome T relname basesort instance unknown
+        symbol_runtime_error aggregate_runtime_error value_is_null
+        env formula input_rows (SqlSuccess output).
+Proof.
+intros env formula input output; split.
+- intro Heval; inversion Heval; subst.
+  eexists; split; eassumption.
+- intros [input_rows [Hinput Hfilter]].
+  eapply EQuery_FilterRows with (input_rows := input_rows).
+  + exact Hinput.
+  + exact Hfilter.
+Qed.
+
+Theorem query_project_preserves_concrete_permutation_closed :
+  forall env select_list input,
+    ConcretePermutationClosed T
+      (fun rows => eval_query_expr env input (SqlSuccess rows)) ->
+    ConcretePermutationClosed T
+      (fun rows =>
+        eval_query_expr env (QExpr_Project select_list input)
+          (SqlSuccess rows)).
+Proof.
+intros env select_list input Hclosed source desired Hpermutation Hsource.
+apply eval_query_expr_project_success_iff in Hsource.
+destruct Hsource as [input_rows [Hinput Hproject]].
+destruct (project_rows_outcome_success_output_permutation
+  env select_list input_rows Hproject Hpermutation)
+  as [permuted_input [Hinput_permutation Hproject']].
+apply eval_query_expr_project_success_iff.
+exists permuted_input; split; [|exact Hproject'].
+exact (Hclosed input_rows permuted_input Hinput_permutation Hinput).
+Qed.
+
+Theorem query_row_map_preserves_concrete_permutation_closed :
+  forall env output_attributes row_map input,
+    ConcretePermutationClosed T
+      (fun rows => eval_query_expr env input (SqlSuccess rows)) ->
+    ConcretePermutationClosed T
+      (fun rows =>
+        eval_query_expr env (QExpr_RowMap output_attributes row_map input)
+          (SqlSuccess rows)).
+Proof.
+intros env output_attributes row_map input Hclosed
+  source desired Hpermutation Hsource.
+apply eval_query_expr_row_map_success_iff in Hsource.
+destruct Hsource as [input_rows [Hinput Hrow_map]].
+destruct (row_map_rows_outcome_success_output_permutation
+  row_map input_rows Hrow_map Hpermutation)
+  as [permuted_input [Hinput_permutation Hrow_map']].
+apply eval_query_expr_row_map_success_iff.
+exists permuted_input; split; [|exact Hrow_map'].
+exact (Hclosed input_rows permuted_input Hinput_permutation Hinput).
+Qed.
+
+Theorem query_filter_preserves_concrete_permutation_closed :
+  forall env formula input,
+    ConcretePermutationClosed T
+      (fun rows => eval_query_expr env input (SqlSuccess rows)) ->
+    ConcretePermutationClosed T
+      (fun rows =>
+        eval_query_expr env (QExpr_Filter formula input) (SqlSuccess rows)).
+Proof.
+intros env formula input Hclosed source desired Hpermutation Hsource.
+apply eval_query_expr_filter_success_iff in Hsource.
+destruct Hsource as [input_rows [Hinput Hfilter]].
+destruct (eval_filter_rows_success_output_permutation
+  Hfilter Hpermutation)
+  as [permuted_input [Hinput_permutation Hfilter']].
+apply eval_query_expr_filter_success_iff.
+exists permuted_input; split; [|exact Hfilter'].
+exact (Hclosed input_rows permuted_input Hinput_permutation Hinput).
+Qed.
+
+(** Every syntactic [BagReset] point is closed under changing
     a successful representative list to any bag-equal representative. *)
-Lemma query_bag_effect_success_transport :
+Lemma query_bag_reset_success_transport :
   forall env q first second,
-    query_expr_effect q = BagEffect ->
+    query_expr_order_behavior q = BagReset ->
     bag_eq T (rows_bag T first) (rows_bag T second) ->
     eval_query_expr env q (SqlSuccess first) ->
     eval_query_expr env q (SqlSuccess second).
 Proof.
-intros env q first second Heffect Heq Heval.
-destruct q; simpl in Heffect; try discriminate;
+intros env q first second Hbehavior Heq Heval.
+destruct q; simpl in Hbehavior; try discriminate;
   inversion Heval; subst;
   solve [econstructor;
          eauto using query_same_rows_as_bag_transport].
 Qed.
 
-Theorem query_expr_effect_sound :
+(** [BagReset] establishes the concrete implementation certificate on
+    successful observations.  This statement deliberately says nothing about
+    error outcomes, whose first-error behavior remains order-sensitive. *)
+Theorem query_bag_reset_concrete_permutation_closed :
   forall env q,
-    query_expr_effect q = BagEffect ->
-    OutcomeBagClosed T (eval_query_expr env q).
+    query_expr_order_behavior q = BagReset ->
+    ConcretePermutationClosed T
+      (fun rows => eval_query_expr env q (SqlSuccess rows)).
 Proof.
-intros env q Heffect.
-unfold OutcomeBagClosed, BagClosed.
-intros first second Heq; split; intro Heval.
-- eapply query_bag_effect_success_transport; eassumption.
-- eapply query_bag_effect_success_transport; [exact Heffect | | exact Heval].
-  now apply bag_eq_sym.
+intros env q Hbehavior source desired Hpermutation Hsource.
+eapply (query_bag_reset_success_transport
+  (env := env) (q := q) (first := source) desired).
+- exact Hbehavior.
+- now apply concrete_permutation_rows_bag_eq.
+- exact Hsource.
+Qed.
+
+Theorem query_bag_reset_sound :
+  forall env q,
+    query_expr_order_behavior q = BagReset ->
+    BagClosed T
+      (fun rows => eval_query_expr env q (SqlSuccess rows)).
+Proof.
+intros env q Hbehavior.
+apply concrete_permutation_closed_implies_bag_closed.
+now apply query_bag_reset_concrete_permutation_closed.
+Qed.
+
+(** Soundness of the recursive syntax classifier.  It recognizes a reset and
+    any finite stack of the three transparent, order-preserving unary
+    constructors above it. *)
+Theorem query_expr_permutation_closure_certified_sound :
+  forall env q,
+    query_expr_permutation_closure_certified q = true ->
+    ConcretePermutationClosed T
+      (fun rows => eval_query_expr env q (SqlSuccess rows)).
+Proof.
+intro env.
+fix IH 1.
+intros q Hcertified.
+destruct q; simpl in Hcertified;
+  try discriminate;
+  try solve [apply query_bag_reset_concrete_permutation_closed; reflexivity].
+- apply query_project_preserves_concrete_permutation_closed.
+  now apply IH.
+- apply query_row_map_preserves_concrete_permutation_closed.
+  now apply IH.
+- apply query_filter_preserves_concrete_permutation_closed.
+  now apply IH.
+Qed.
+
+Theorem query_expr_permutation_closure_certified_bag_closed :
+  forall env q,
+    query_expr_permutation_closure_certified q = true ->
+    BagClosed T
+      (fun rows => eval_query_expr env q (SqlSuccess rows)).
+Proof.
+intros env q Hcertified.
+apply concrete_permutation_closed_implies_bag_closed.
+now apply query_expr_permutation_closure_certified_sound.
 Qed.
 
 (** General introduction rule used by generated proof obligations.  Ordered
@@ -390,7 +778,7 @@ Theorem query_expr_equiv_of_ordered_observations :
       exists left_rows,
         eval_query_expr env left (SqlSuccess left_rows) /\
         @ordered_rows_equiv T left_rows right_rows) ->
-    @query_expr_equiv T relname basesort instance unknown contains_nulls
+    @query_expr_equiv T relname basesort instance unknown
       symbol_runtime_error aggregate_runtime_error value_is_null
       env left right.
 Proof.
@@ -411,7 +799,7 @@ Theorem query_expr_equiv_of_observations :
     (forall rows,
       eval_query_expr env left (SqlSuccess rows) <->
       eval_query_expr env right (SqlSuccess rows)) ->
-    @query_expr_equiv T relname basesort instance unknown contains_nulls
+    @query_expr_equiv T relname basesort instance unknown
       symbol_runtime_error aggregate_runtime_error value_is_null
       env left right.
 Proof.
@@ -449,7 +837,7 @@ Theorem query_expr_outcome_equiv_of_observations :
     (forall error,
       eval_query_expr env left (SqlError error) <->
       eval_query_expr env right (SqlError error)) ->
-    @query_expr_outcome_equiv T relname basesort instance unknown contains_nulls
+    @query_expr_outcome_equiv T relname basesort instance unknown
       symbol_runtime_error aggregate_runtime_error value_is_null
       env left right.
 Proof.
@@ -459,238 +847,6 @@ unfold query_expr_outcome_observation_equiv.
 now apply outcome_relation_equiv_intro.
 Qed.
 
-(** [QExpr_Bag] exposes every ordered representative of the deterministic
-    bag-algebra result, while preserving its runtime error exactly. *)
-Lemma eval_query_expr_bag_success_iff :
-  forall env outputs bag_query rows,
-    eval_query_expr env (QExpr_Bag outputs bag_query) (SqlSuccess rows) <->
-    exists bag,
-      @eval_query_outcome T relname basesort instance unknown contains_nulls
-        symbol_runtime_error aggregate_runtime_error env bag_query =
-        SqlSuccess bag /\
-      query_same_rows_as_bag rows bag.
-Proof.
-intros env outputs bag_query rows; split.
-- intro Heval; inversion Heval; subst; eauto.
-- intros [bag [Heval Hrows]].
-  now apply EQuery_BagSuccess with bag.
-Qed.
-
-Lemma eval_query_expr_bag_error_iff :
-  forall env outputs bag_query error,
-    eval_query_expr env (QExpr_Bag outputs bag_query) (SqlError error) <->
-    @eval_query_outcome T relname basesort instance unknown contains_nulls
-      symbol_runtime_error aggregate_runtime_error env bag_query =
-      SqlError error.
-Proof.
-intros env outputs bag_query error; split.
-- intro Heval; inversion Heval; subst; assumption.
-- now apply EQuery_BagError.
-Qed.
-
-Theorem bag_query_expr_observation_equiv_iff_bag_query_equiv :
-  forall env left_outputs right_outputs left_query right_query,
-    @query_expr_observation_equiv T relname basesort instance unknown contains_nulls
-      symbol_runtime_error aggregate_runtime_error value_is_null
-      env (QExpr_Bag left_outputs left_query)
-          (QExpr_Bag right_outputs right_query) <->
-    bag_query_equiv env left_query right_query.
-Proof.
-intros env left_outputs right_outputs left_query right_query; split.
-- intro Hobservation.
-  unfold query_expr_observation_equiv, successful_relation_equiv in Hobservation.
-  destruct Hobservation as
-    [_ [Hleft_no_error [Hright_no_error [Hforward _]]]].
-  apply bag_query_equiv_iff_success_and_bag_equality.
-  assert (Hleft_safe : bag_query_runtime_error env left_query = None).
-  {
-    unfold bag_query_runtime_error.
-    destruct (@eval_query_runtime_error T relname basesort instance unknown
-      contains_nulls symbol_runtime_error aggregate_runtime_error env left_query)
-      eqn:Herror; [|reflexivity].
-    exfalso; apply (Hleft_no_error s).
-    apply eval_query_expr_bag_error_iff.
-    unfold eval_query_outcome; now rewrite Herror.
-  }
-  assert (Hright_safe : bag_query_runtime_error env right_query = None).
-  {
-    unfold bag_query_runtime_error.
-    destruct (@eval_query_runtime_error T relname basesort instance unknown
-      contains_nulls symbol_runtime_error aggregate_runtime_error env right_query)
-      eqn:Herror; [|reflexivity].
-    exfalso; apply (Hright_no_error s).
-    apply eval_query_expr_bag_error_iff.
-    unfold eval_query_outcome; now rewrite Herror.
-  }
-  split; [exact Hleft_safe | split; [exact Hright_safe |]].
-  pose
-    (left_bag := @eval_query T relname basesort instance unknown contains_nulls
-      env left_query).
-  pose (left_rows := Febag.elements BTupleT left_bag).
-  assert (Hleft_rows :
-    eval_query_expr env (QExpr_Bag left_outputs left_query)
-      (SqlSuccess left_rows)).
-  {
-    apply eval_query_expr_bag_success_iff.
-    exists left_bag; split.
-    - unfold eval_query_outcome, bag_query_runtime_error in *.
-      now rewrite Hleft_safe.
-    - unfold left_rows, left_bag, query_same_rows_as_bag, query_rows_bag.
-      apply Febag.elements_mk_bag.
-  }
-  destruct (Hforward left_rows Hleft_rows)
-    as [right_rows [Hright_eval Hordered]].
-  apply eval_query_expr_bag_success_iff in Hright_eval.
-  destruct Hright_eval as [right_bag [Hright_outcome Hright_rows]].
-  unfold eval_query_outcome, bag_query_runtime_error in Hright_outcome, Hright_safe.
-  rewrite Hright_safe in Hright_outcome; inversion Hright_outcome; subst right_bag.
-  assert (Hleft_rep : query_same_rows_as_bag left_rows left_bag).
-  {
-    unfold left_rows, left_bag, query_same_rows_as_bag, query_rows_bag.
-    apply Febag.elements_mk_bag.
-  }
-  apply query_same_rows_as_bag_iff_bag_eq in Hleft_rep.
-  apply query_same_rows_as_bag_iff_bag_eq in Hright_rows.
-  change (bag_eq T left_bag
-    (@eval_query T relname basesort instance unknown contains_nulls
-      env right_query)).
-  eapply bag_eq_trans.
-  + exact (bag_eq_sym Hleft_rep).
-  + eapply bag_eq_trans.
-    * exact (ordered_rows_equiv_implies_bag_eq Hordered).
-    * exact Hright_rows.
-- intro Hbag.
-  apply bag_query_equiv_iff_success_and_bag_equality in Hbag.
-  destruct Hbag as [Hleft_safe [Hright_safe Hbag]].
-  unfold query_expr_observation_equiv.
-  apply successful_relation_equiv_intro.
-  + exists
-      (Febag.elements BTupleT
-        (@eval_query T relname basesort instance unknown contains_nulls
-          env left_query)).
-    apply eval_query_expr_bag_success_iff.
-    exists (@eval_query T relname basesort instance unknown contains_nulls
-      env left_query); split.
-    * unfold eval_query_outcome, bag_query_runtime_error in *.
-      now rewrite Hleft_safe.
-    * unfold query_same_rows_as_bag, query_rows_bag.
-      apply Febag.elements_mk_bag.
-  + intros error Herror.
-    apply eval_query_expr_bag_error_iff in Herror.
-    unfold eval_query_outcome, bag_query_runtime_error in Herror, Hleft_safe.
-    rewrite Hleft_safe in Herror; discriminate.
-  + intros error Herror.
-    apply eval_query_expr_bag_error_iff in Herror.
-    unfold eval_query_outcome, bag_query_runtime_error in Herror, Hright_safe.
-    rewrite Hright_safe in Herror; discriminate.
-  + intros rows Hrows.
-    apply eval_query_expr_bag_success_iff in Hrows.
-    destruct Hrows as [left_bag [Hleft_outcome Hrows]].
-    unfold eval_query_outcome, bag_query_runtime_error in Hleft_outcome, Hleft_safe.
-    rewrite Hleft_safe in Hleft_outcome; inversion Hleft_outcome; subst left_bag.
-    exists rows; split.
-    * apply eval_query_expr_bag_success_iff.
-      exists (@eval_query T relname basesort instance unknown contains_nulls
-        env right_query); split.
-      -- unfold eval_query_outcome, bag_query_runtime_error in *.
-         now rewrite Hright_safe.
-      -- eapply query_same_rows_as_bag_bag_transport; [exact Hrows |].
-         exact Hbag.
-    * apply ordered_rows_equiv_refl.
-  + intros rows Hrows.
-    apply eval_query_expr_bag_success_iff in Hrows.
-    destruct Hrows as [right_bag [Hright_outcome Hrows]].
-    unfold eval_query_outcome, bag_query_runtime_error in Hright_outcome, Hright_safe.
-    rewrite Hright_safe in Hright_outcome; inversion Hright_outcome; subst right_bag.
-    exists rows; split.
-    * apply eval_query_expr_bag_success_iff.
-      exists (@eval_query T relname basesort instance unknown contains_nulls
-        env left_query); split.
-      -- unfold eval_query_outcome, bag_query_runtime_error in *.
-         now rewrite Hleft_safe.
-      -- eapply query_same_rows_as_bag_bag_transport; [exact Hrows |].
-         apply bag_eq_sym; exact Hbag.
-    * apply ordered_rows_equiv_refl.
-Qed.
-
-Theorem bag_query_expr_equiv_iff_bag_query_equiv :
-  forall env left_outputs right_outputs left_query right_query,
-    left_outputs = right_outputs ->
-    (@query_expr_equiv T relname basesort instance unknown contains_nulls
-       symbol_runtime_error aggregate_runtime_error value_is_null
-       env (QExpr_Bag left_outputs left_query)
-           (QExpr_Bag right_outputs right_query) <->
-     bag_query_equiv env left_query right_query).
-Proof.
-intros env left_outputs right_outputs left_query right_query Houtputs.
-unfold query_expr_equiv.
-split.
-- intros [_ Hobservation].
-  now apply (proj1
-    (bag_query_expr_observation_equiv_iff_bag_query_equiv
-      env left_outputs right_outputs left_query right_query)).
-- intro Hbag; split.
-  + exact Houtputs.
-  +
-  now apply (proj2
-    (bag_query_expr_observation_equiv_iff_bag_query_equiv
-      env left_outputs right_outputs left_query right_query)).
-Qed.
-
-(** A singleton possible-bag outcome is singleton modulo FormalSQL's bag
-    equality.  Errors remain exact outer outcomes. *)
-Definition singleton_bag_outcome
-    (expected observed : sql_outcome bagT) : Prop :=
-  match expected, observed with
-  | SqlSuccess expected_bag, SqlSuccess observed_bag =>
-      bag_eq T expected_bag observed_bag
-  | SqlError expected_error, SqlError observed_error =>
-      expected_error = observed_error
-  | _, _ => False
-  end.
-
-Theorem outcome_alpha_bag_query_expr_singleton :
-  forall env outputs bag_query,
-    rel_equiv
-      (outcome_alpha T (eval_query_expr env (QExpr_Bag outputs bag_query)))
-      (singleton_bag_outcome
-        (@eval_query_outcome T relname basesort instance unknown contains_nulls
-          symbol_runtime_error aggregate_runtime_error env bag_query)).
-Proof.
-intros env outputs bag_query [observed_bag | observed_error].
-- simpl; split.
-  + intros [rows [Hrows Hobserved]].
-    apply eval_query_expr_bag_success_iff in Hrows.
-    destruct Hrows as [expected_bag [Heval Hmatch]].
-    rewrite Heval; simpl.
-    apply query_same_rows_as_bag_iff_bag_eq in Hmatch.
-    eapply bag_eq_trans.
-    * apply bag_eq_sym; exact Hmatch.
-    * exact Hobserved.
-  + unfold singleton_bag_outcome.
-    destruct (@eval_query_outcome T relname basesort instance unknown contains_nulls
-      symbol_runtime_error aggregate_runtime_error env bag_query)
-      as [expected_bag | expected_error] eqn:Heval; [|contradiction].
-    intro Heq.
-    exists (Febag.elements BTupleT expected_bag); split.
-    * eapply EQuery_BagSuccess; [exact Heval |].
-      apply query_same_rows_as_bag_iff_bag_eq.
-      unfold bag_eq, rows_bag, SqlBagAbstraction.BTupleT.
-      apply Febag.elements_mk_bag.
-    * eapply bag_eq_trans.
-      -- unfold bag_eq, rows_bag, SqlBagAbstraction.BTupleT.
-         apply Febag.elements_mk_bag.
-      -- exact Heq.
-- simpl; unfold singleton_bag_outcome.
-  destruct (@eval_query_outcome T relname basesort instance unknown contains_nulls
-    symbol_runtime_error aggregate_runtime_error env bag_query)
-    as [expected_bag | expected_error] eqn:Heval; simpl.
-  + split; intro H; [inversion H; congruence | contradiction].
-  + split.
-    * intro H; inversion H; subst; congruence.
-    * intro H; subst; now apply EQuery_BagError.
-Qed.
-
 Definition query_possible_bag_equiv
     (env : Env.env T) (left right : query_expr T relname) : Prop :=
   successful_relation_equiv
@@ -698,27 +854,46 @@ Definition query_possible_bag_equiv
     (outcome_alpha T (eval_query_expr env left))
     (outcome_alpha T (eval_query_expr env right)).
 
-Theorem query_bag_effect_observation_equiv_iff_possible_bag_equiv :
+Theorem query_bag_closed_observation_equiv_iff_possible_bag_equiv :
   forall env left right,
-    query_expr_effect left = BagEffect ->
-    query_expr_effect right = BagEffect ->
-    (@query_expr_observation_equiv T relname basesort instance unknown contains_nulls
+    BagClosed T
+      (fun rows => eval_query_expr env left (SqlSuccess rows)) ->
+    BagClosed T
+      (fun rows => eval_query_expr env right (SqlSuccess rows)) ->
+    (@query_expr_observation_equiv T relname basesort instance unknown
+       symbol_runtime_error aggregate_runtime_error value_is_null
+       env left right <->
+     query_possible_bag_equiv env left right).
+Proof.
+intros env left right Hleft_closed Hright_closed.
+unfold query_expr_observation_equiv, query_possible_bag_equiv.
+apply successful_relation_equiv_iff_outcome_alpha.
+- exact Hleft_closed.
+- exact Hright_closed.
+Qed.
+
+Corollary query_bag_reset_observation_equiv_iff_possible_bag_equiv :
+  forall env left right,
+    query_expr_order_behavior left = BagReset ->
+    query_expr_order_behavior right = BagReset ->
+    (@query_expr_observation_equiv T relname basesort instance unknown
        symbol_runtime_error aggregate_runtime_error value_is_null
        env left right <->
      query_possible_bag_equiv env left right).
 Proof.
 intros env left right Hleft Hright.
-unfold query_expr_observation_equiv, query_possible_bag_equiv.
-apply successful_relation_equiv_iff_outcome_alpha.
-- now apply query_expr_effect_sound.
-- now apply query_expr_effect_sound.
+apply query_bag_closed_observation_equiv_iff_possible_bag_equiv.
+- now apply query_bag_reset_sound.
+- now apply query_bag_reset_sound.
 Qed.
 
-Theorem query_bag_effect_typed_equiv_iff_possible_bag_equiv :
+Theorem query_bag_closed_typed_equiv_iff_possible_bag_equiv :
   forall env left right,
-    query_expr_effect left = BagEffect ->
-    query_expr_effect right = BagEffect ->
-    (@query_expr_equiv T relname basesort instance unknown contains_nulls
+    BagClosed T
+      (fun rows => eval_query_expr env left (SqlSuccess rows)) ->
+    BagClosed T
+      (fun rows => eval_query_expr env right (SqlSuccess rows)) ->
+    (@query_expr_equiv T relname basesort instance unknown
        symbol_runtime_error aggregate_runtime_error value_is_null
        env left right <->
      query_expr_outputs left = query_expr_outputs right /\
@@ -729,11 +904,27 @@ unfold query_expr_equiv.
 split; intros [Houtputs Hobservation]; split;
   [exact Houtputs | | exact Houtputs |].
 - now apply (proj1
-    (query_bag_effect_observation_equiv_iff_possible_bag_equiv
-      env left right Hleft Hright)).
+    (query_bag_closed_observation_equiv_iff_possible_bag_equiv
+      (env := env) (left := left) (right := right) Hleft Hright)).
 - now apply (proj2
-    (query_bag_effect_observation_equiv_iff_possible_bag_equiv
-      env left right Hleft Hright)).
+    (query_bag_closed_observation_equiv_iff_possible_bag_equiv
+      (env := env) (left := left) (right := right) Hleft Hright)).
+Qed.
+
+Corollary query_bag_reset_typed_equiv_iff_possible_bag_equiv :
+  forall env left right,
+    query_expr_order_behavior left = BagReset ->
+    query_expr_order_behavior right = BagReset ->
+    (@query_expr_equiv T relname basesort instance unknown
+       symbol_runtime_error aggregate_runtime_error value_is_null
+       env left right <->
+     query_expr_outputs left = query_expr_outputs right /\
+     query_possible_bag_equiv env left right).
+Proof.
+intros env left right Hleft Hright.
+apply query_bag_closed_typed_equiv_iff_possible_bag_equiv.
+- now apply query_bag_reset_sound.
+- now apply query_bag_reset_sound.
 Qed.
 
 Definition query_possible_bag_outcome_equiv
@@ -743,12 +934,13 @@ Definition query_possible_bag_outcome_equiv
     (outcome_alpha T (eval_query_expr env left))
     (outcome_alpha T (eval_query_expr env right)).
 
-Theorem query_bag_effect_outcome_observation_equiv_iff_possible_bag_equiv :
+Theorem query_bag_closed_outcome_observation_equiv_iff_possible_bag_equiv :
   forall env left right,
-    query_expr_effect left = BagEffect ->
-    query_expr_effect right = BagEffect ->
-    (@query_expr_outcome_observation_equiv T relname basesort instance unknown
-       contains_nulls symbol_runtime_error aggregate_runtime_error value_is_null
+    BagClosed T
+      (fun rows => eval_query_expr env left (SqlSuccess rows)) ->
+    BagClosed T
+      (fun rows => eval_query_expr env right (SqlSuccess rows)) ->
+    (@query_expr_outcome_observation_equiv T relname basesort instance unknown symbol_runtime_error aggregate_runtime_error value_is_null
        env left right <->
      query_possible_bag_outcome_equiv env left right).
 Proof.
@@ -756,15 +948,32 @@ intros env left right Hleft Hright.
 unfold query_expr_outcome_observation_equiv,
   query_possible_bag_outcome_equiv.
 apply outcome_relation_equiv_iff_outcome_alpha.
-- now apply query_expr_effect_sound.
-- now apply query_expr_effect_sound.
+- exact Hleft.
+- exact Hright.
 Qed.
 
-Theorem query_bag_effect_typed_outcome_equiv_iff_possible_bag_equiv :
+Corollary query_bag_reset_outcome_observation_equiv_iff_possible_bag_equiv :
   forall env left right,
-    query_expr_effect left = BagEffect ->
-    query_expr_effect right = BagEffect ->
-    (@query_expr_outcome_equiv T relname basesort instance unknown contains_nulls
+    query_expr_order_behavior left = BagReset ->
+    query_expr_order_behavior right = BagReset ->
+    (@query_expr_outcome_observation_equiv T relname basesort instance unknown
+       symbol_runtime_error aggregate_runtime_error value_is_null
+       env left right <->
+     query_possible_bag_outcome_equiv env left right).
+Proof.
+intros env left right Hleft Hright.
+apply query_bag_closed_outcome_observation_equiv_iff_possible_bag_equiv.
+- now apply query_bag_reset_sound.
+- now apply query_bag_reset_sound.
+Qed.
+
+Theorem query_bag_closed_typed_outcome_equiv_iff_possible_bag_equiv :
+  forall env left right,
+    BagClosed T
+      (fun rows => eval_query_expr env left (SqlSuccess rows)) ->
+    BagClosed T
+      (fun rows => eval_query_expr env right (SqlSuccess rows)) ->
+    (@query_expr_outcome_equiv T relname basesort instance unknown
        symbol_runtime_error aggregate_runtime_error value_is_null
        env left right <->
      query_expr_outputs left = query_expr_outputs right /\
@@ -775,11 +984,27 @@ unfold query_expr_outcome_equiv.
 split; intros [Houtputs Hobservation]; split;
   [exact Houtputs | | exact Houtputs |].
 - now apply (proj1
-    (query_bag_effect_outcome_observation_equiv_iff_possible_bag_equiv
-      env left right Hleft Hright)).
+    (query_bag_closed_outcome_observation_equiv_iff_possible_bag_equiv
+      (env := env) (left := left) (right := right) Hleft Hright)).
 - now apply (proj2
-    (query_bag_effect_outcome_observation_equiv_iff_possible_bag_equiv
-      env left right Hleft Hright)).
+    (query_bag_closed_outcome_observation_equiv_iff_possible_bag_equiv
+      (env := env) (left := left) (right := right) Hleft Hright)).
+Qed.
+
+Corollary query_bag_reset_typed_outcome_equiv_iff_possible_bag_equiv :
+  forall env left right,
+    query_expr_order_behavior left = BagReset ->
+    query_expr_order_behavior right = BagReset ->
+    (@query_expr_outcome_equiv T relname basesort instance unknown
+       symbol_runtime_error aggregate_runtime_error value_is_null
+       env left right <->
+     query_expr_outputs left = query_expr_outputs right /\
+     query_possible_bag_outcome_equiv env left right).
+Proof.
+intros env left right Hleft Hright.
+apply query_bag_closed_typed_outcome_equiv_iff_possible_bag_equiv.
+- now apply query_bag_reset_sound.
+- now apply query_bag_reset_sound.
 Qed.
 
 (** Extensional graphs of the concrete bag operations.  These are the
@@ -793,6 +1018,24 @@ Definition binary_bag_graph
     (operation : bagT -> bagT -> bagT) : binary_bag_relation T :=
   fun left_input right_input output =>
     bag_eq T (operation left_input right_input) output.
+
+(** A graph-valued bag operator has at most one semantic output for fixed
+    inputs, even though it may have many Leibniz-distinct representatives. *)
+Lemma unary_bag_graph_functional :
+  forall operation,
+    unary_bag_relation_functional (unary_bag_graph operation).
+Proof.
+intros operation input first second Hfirst Hsecond.
+eapply bag_eq_trans; [apply bag_eq_sym; exact Hfirst | exact Hsecond].
+Qed.
+
+Lemma binary_bag_graph_functional :
+  forall operation,
+    binary_bag_relation_functional (binary_bag_graph operation).
+Proof.
+intros operation left_input right_input first second Hfirst Hsecond.
+eapply bag_eq_trans; [apply bag_eq_sym; exact Hfirst | exact Hsecond].
+Qed.
 
 Lemma unary_bag_graph_extensional :
   forall operation,
@@ -1031,7 +1274,7 @@ Definition query_grouping_sets_bag_relation
 (** Ranking is a relational reset point at the proof-abstraction boundary.
     The concrete rank computation is deterministic on the canonical input-bag
     rows; output closure records that SQL row order is not observable above a
-    [BagEffect] region. *)
+    [BagReset] boundary. *)
 Definition query_rank_bag_relation
     (partition_keys order_keys : list (sort_key T))
     (rank_attribute : attribute T) (rank_value : nat -> option value) :
@@ -1269,6 +1512,25 @@ split; intros [ranked_rows [Hrank Hbag]].
 - exists ranked_rows; split.
   + now rewrite Hrows.
   + exact (bag_eq_trans Hbag (bag_eq_sym Houtput)).
+Qed.
+
+(** For a fixed semantic input bag, RANK computes over the canonical bag-row
+    enumeration and is therefore functional modulo [bag_eq].  This does not
+    claim that the enclosing child query has only one possible bag; that
+    independent premise is required by the query-level composition theorem. *)
+Lemma query_rank_bag_relation_functional :
+  forall partition_keys order_keys rank_attribute rank_value,
+    unary_bag_relation_functional
+      (query_rank_bag_relation
+        partition_keys order_keys rank_attribute rank_value).
+Proof.
+intros partition_keys order_keys rank_attribute rank_value
+  input_bag first second
+  [first_rows [Hfirst Hfirst_bag]]
+  [second_rows [Hsecond Hsecond_bag]].
+rewrite Hfirst in Hsecond.
+inversion Hsecond; subst second_rows.
+exact (bag_eq_trans (bag_eq_sym Hfirst_bag) Hsecond_bag).
 Qed.
 
 Lemma query_window_bag_relation_extensional :

@@ -919,60 +919,41 @@ Definition interp_sum_numeric l :=
           (numeric_values l) numeric_sum_initial))
   else Value_numeric None.
 
+Definition fold_nonempty {A : Type} (operation : A -> A -> A) (values : list A)
+    : option A :=
+  match values with
+  | nil => None
+  | first :: rest => Some (fold_left operation rest first)
+  end.
+
 Definition interp_max_z l :=
   if forallb is_z_value l then
-    match z_values l with
-    | nil => Value_Z None
-    | z :: values => Value_Z (Some (fold_left Z.max values z))
-    end
+    Value_Z (fold_nonempty Z.max (z_values l))
   else Value_Z None.
 
 Definition interp_max_int32 l :=
   if forallb is_int32_value l then
-    match int32_values l with
-    | nil => Value_int32 None
-    | z :: values =>
-        Value_int32 (Some (fold_left
-          (fun acc next =>
-             match int32_compare acc next with Lt => next | _ => acc end)
-          values z))
-    end
+    Value_int32 (fold_nonempty int32_maximum (int32_values l))
   else Value_int32 None.
 
 Definition interp_max_int64 l :=
   if forallb is_int64_value l then
-    match int64_values l with
-    | nil => Value_int64 None
-    | z :: values =>
-        Value_int64 (Some (fold_left
-          (fun acc next =>
-             match int64_compare acc next with Lt => next | _ => acc end)
-          values z))
-    end
+    Value_int64 (fold_nonempty int64_maximum (int64_values l))
   else Value_int64 None.
 
 Definition interp_max_float l :=
   if forallb is_float_value l then
-    match float_values l with
-    | nil => Value_float None
-    | f :: values => Value_float (Some (fold_left float32_max values f))
-    end
+    Value_float (fold_nonempty float32_max (float_values l))
   else Value_float None.
 
 Definition interp_max_double l :=
   if forallb is_double_value l then
-    match double_values l with
-    | nil => Value_double None
-    | f :: values => Value_double (Some (fold_left float64_max values f))
-    end
+    Value_double (fold_nonempty float64_max (double_values l))
   else Value_double None.
 
 Definition interp_max_numeric l :=
   if forallb is_numeric_value l then
-    match numeric_values l with
-    | nil => Value_numeric None
-    | d :: values => Value_numeric (Some (fold_left numeric_max values d))
-    end
+    Value_numeric (fold_nonempty numeric_max (numeric_values l))
   else Value_numeric None.
 
 (** Under PostgreSQL's UTF8/C environment, text comparison is the
@@ -986,68 +967,38 @@ Definition text_c_max (left right : string) : string :=
 
 Definition interp_max_string l :=
   if forallb is_text_value l then
-    match text_values l with
-    | nil => Value_string (StringValue StringText None)
-    | first :: rest =>
-        Value_string
-          (StringValue StringText (Some (fold_left text_c_max rest first)))
-    end
+    Value_string
+      (StringValue StringText (fold_nonempty text_c_max (text_values l)))
   else Value_string (StringValue StringText None).
 
 Definition interp_min_z l :=
   if forallb is_z_value l then
-    match z_values l with
-    | nil => Value_Z None
-    | z :: values => Value_Z (Some (fold_left Z.min values z))
-    end
+    Value_Z (fold_nonempty Z.min (z_values l))
   else Value_Z None.
 
 Definition interp_min_int32 l :=
   if forallb is_int32_value l then
-    match int32_values l with
-    | nil => Value_int32 None
-    | z :: values =>
-        Value_int32 (Some (fold_left
-          (fun acc next =>
-             match int32_compare acc next with Gt => next | _ => acc end)
-          values z))
-    end
+    Value_int32 (fold_nonempty int32_minimum (int32_values l))
   else Value_int32 None.
 
 Definition interp_min_int64 l :=
   if forallb is_int64_value l then
-    match int64_values l with
-    | nil => Value_int64 None
-    | z :: values =>
-        Value_int64 (Some (fold_left
-          (fun acc next =>
-             match int64_compare acc next with Gt => next | _ => acc end)
-          values z))
-    end
+    Value_int64 (fold_nonempty int64_minimum (int64_values l))
   else Value_int64 None.
 
 Definition interp_min_float l :=
   if forallb is_float_value l then
-    match float_values l with
-    | nil => Value_float None
-    | f :: values => Value_float (Some (fold_left float32_min values f))
-    end
+    Value_float (fold_nonempty float32_min (float_values l))
   else Value_float None.
 
 Definition interp_min_double l :=
   if forallb is_double_value l then
-    match double_values l with
-    | nil => Value_double None
-    | f :: values => Value_double (Some (fold_left float64_min values f))
-    end
+    Value_double (fold_nonempty float64_min (double_values l))
   else Value_double None.
 
 Definition interp_min_numeric l :=
   if forallb is_numeric_value l then
-    match numeric_values l with
-    | nil => Value_numeric None
-    | d :: values => Value_numeric (Some (fold_left numeric_min values d))
-    end
+    Value_numeric (fold_nonempty numeric_min (numeric_values l))
   else Value_numeric None.
 
 (** Calcite's [SINGLE_VALUE] is the aggregate form of scalar-subquery
@@ -1077,26 +1028,29 @@ Definition interp_avg_z l :=
     end
   else Value_Z None.
 
+(** PostgreSQL AVG over REAL and DOUBLE PRECISION uses a float8 transition
+    state.  The count is itself accumulated in float8, rather than converted
+    once from the final mathematical list length. *)
+Definition interp_avg_float64_values (values : list float64) :=
+  match values with
+  | nil => Value_double None
+  | _ =>
+      let sum := fold_left float64_add values float64_zero in
+      let count :=
+        fold_left
+          (fun count _ => float64_add count (float64_of_Z 1))
+          values float64_zero in
+      Value_double (Some (float64_div sum count))
+  end.
+
 Definition interp_avg_float l :=
   if forallb is_float_value l then
-    match float_values l with
-    | nil => Value_float None
-    | values =>
-        let sum := fold_left float32_add values float32_zero in
-        let count := Z.of_nat (List.length values) in
-        Value_float (Some (float32_div sum (float32_of_Z count)))
-    end
-  else Value_float None.
+    interp_avg_float64_values (map float32_to_float64 (float_values l))
+  else Value_double None.
 
 Definition interp_avg_double l :=
   if forallb is_double_value l then
-    match double_values l with
-    | nil => Value_double None
-    | values =>
-        let sum := fold_left float64_add values float64_zero in
-        let count := Z.of_nat (List.length values) in
-        Value_double (Some (float64_div sum (float64_of_Z count)))
-    end
+    interp_avg_float64_values (double_values l)
   else Value_double None.
 
 Definition interp_predicate := NullPredicates.interp_predicate.
@@ -1261,6 +1215,28 @@ Definition interp_cast_string_explicit l :=
     for the unconstrained character targets admitted by the frontend.  The
     separate operator keeps implicit coercion distinct in generated syntax. *)
 Definition interp_coerce_string_implicit := interp_cast_string_explicit.
+
+Definition interp_cast_string_to_int32 l :=
+  match l with
+  | Value_string (source_typmod, Some input) :: nil =>
+      match parse_text_int32 (string_cast_source_value source_typmod input) with
+      | TextIntegerValue value => Value_int32 (Some value)
+      | TextIntegerInvalid | TextIntegerOutOfRange => Value_int32 None
+      end
+  | Value_string (_, None) :: nil => Value_int32 None
+  | _ => Value_int32 None
+  end.
+
+Definition interp_cast_string_to_int64 l :=
+  match l with
+  | Value_string (source_typmod, Some input) :: nil =>
+      match parse_text_int64 (string_cast_source_value source_typmod input) with
+      | TextIntegerValue value => Value_int64 (Some value)
+      | TextIntegerInvalid | TextIntegerOutOfRange => Value_int64 None
+      end
+  | Value_string (_, None) :: nil => Value_int64 None
+  | _ => Value_int64 None
+  end.
 
 (** PostgreSQL's [int4 -> float8] cast is total.  Every signed 32-bit
     integer is exactly representable by IEEE-754 binary64, and SQL NULL is
@@ -1510,6 +1486,8 @@ Definition interp_scalar_operator f :=
     | ScalarCast ScalarCastInt32ToInt64 => interp_cast_int32_to_int64
     | ScalarCast ScalarCastInt64ToInt32 => interp_cast_int64_to_int32
     | ScalarCast ScalarCastNumericToInt32 => interp_cast_numeric_to_int32
+    | ScalarCast ScalarCastStringToInt32 => interp_cast_string_to_int32
+    | ScalarCast ScalarCastStringToInt64 => interp_cast_string_to_int64
     | ScalarPowerHalfInt64ToInt32 =>
       interp_power_half_int64_to_int32
     | ScalarStringConcat => interp_string_concat
@@ -1742,6 +1720,33 @@ Definition interp_aggregate (call : aggregate) (values : list value) :=
 
 Definition numeric_value_out_of_range : option sql_runtime_error :=
   Some (DataException NumericValueOutOfRange).
+
+Definition invalid_text_representation : option sql_runtime_error :=
+  Some (DataException InvalidTextRepresentation).
+
+Definition cast_string_to_int32_runtime_error (values : list value)
+    : option sql_runtime_error :=
+  match values with
+  | Value_string (source_typmod, Some input) :: nil =>
+      match parse_text_int32 (string_cast_source_value source_typmod input) with
+      | TextIntegerValue _ => None
+      | TextIntegerInvalid => invalid_text_representation
+      | TextIntegerOutOfRange => numeric_value_out_of_range
+      end
+  | _ => None
+  end.
+
+Definition cast_string_to_int64_runtime_error (values : list value)
+    : option sql_runtime_error :=
+  match values with
+  | Value_string (source_typmod, Some input) :: nil =>
+      match parse_text_int64 (string_cast_source_value source_typmod input) with
+      | TextIntegerValue _ => None
+      | TextIntegerInvalid => invalid_text_representation
+      | TextIntegerOutOfRange => numeric_value_out_of_range
+      end
+  | _ => None
+  end.
 
 Definition division_by_zero : option sql_runtime_error :=
   Some (DataException DivisionByZero).
@@ -2146,6 +2151,10 @@ Definition scalar_operator_local_runtime_error
           end
       | _ => None
       end
+  | ScalarCast ScalarCastStringToInt32 =>
+      cast_string_to_int32_runtime_error values
+  | ScalarCast ScalarCastStringToInt64 =>
+      cast_string_to_int64_runtime_error values
   | ScalarPowerHalfInt64ToInt32 =>
       match values with
       | Value_int64 (Some value) :: nil =>
@@ -2295,24 +2304,8 @@ Definition sum_double_runtime_error (values : list value)
   then float64_sum_runtime_error_from float64_zero (double_values values)
   else None.
 
-Definition avg_float_runtime_error (values : list value)
-    : option sql_runtime_error :=
-  if forallb is_float_value values then
-    match float_values values with
-    | nil => None
-    | floats =>
-        match float32_sum_runtime_error_from float32_zero floats with
-        | Some error => Some error
-        | None =>
-            let sum := fold_left float32_add floats float32_zero in
-            float32_div_runtime_error
-              (Value_float (Some sum) ::
-               Value_float (Some (float32_of_Z (Z.of_nat (List.length floats)))) :: nil)
-        end
-    end
-  else None.
-
-(** PostgreSQL AVG(float8) uses the Youngs-Cramer [float8_accum]
+(** PostgreSQL AVG(REAL/float4) and AVG(float8) use the Youngs-Cramer
+    [float4_accum]/[float8_accum]
     transition with state (N, Sx, Sxx), even though its final function reads
     only N and Sx.  A finite input can overflow the Sxx transition after Sx
     has cancelled back to a finite value, so checking only the final sum is
@@ -2351,6 +2344,14 @@ Fixpoint float64_avg_accum_runtime_error_from
         float64_avg_accum_runtime_error_from
           next_count next_sum next_sum_squares true rest
   end.
+
+Definition avg_float_runtime_error (values : list value)
+    : option sql_runtime_error :=
+  if forallb is_float_value values
+  then float64_avg_accum_runtime_error_from
+         float64_zero float64_zero float64_zero false
+         (map float32_to_float64 (float_values values))
+  else None.
 
 Definition avg_double_runtime_error (values : list value)
     : option sql_runtime_error :=

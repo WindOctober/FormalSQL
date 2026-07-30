@@ -36,7 +36,6 @@ Local Definition bagT := Febag.bag BTupleT.
 Hypothesis basesort : relname -> setA.
 Hypothesis instance : relname -> bagT.
 Hypothesis unknown : Bool.b (B T).
-Hypothesis contains_nulls : tuple -> bool.
 Hypothesis symbol_runtime_error :
   scalar_operator T -> list (option sql_runtime_error * value) ->
   option sql_runtime_error.
@@ -46,31 +45,35 @@ Hypothesis aggregate_runtime_error :
 Hypothesis value_is_null : value -> bool.
 
 Local Abbreviation eval_query :=
-  (@eval_query_expr_outcome T relname basesort instance unknown contains_nulls
+  (@eval_query_expr_outcome T relname basesort instance unknown
+    symbol_runtime_error aggregate_runtime_error value_is_null).
+Local Abbreviation eval_query_cardinality :=
+  (@eval_query_cardinality_outcome T relname basesort instance unknown
+    symbol_runtime_error aggregate_runtime_error value_is_null).
+Local Abbreviation eval_query_exists :=
+  (@eval_query_exists_outcome T relname basesort instance unknown
     symbol_runtime_error aggregate_runtime_error value_is_null).
 Local Abbreviation eval_formula :=
-  (@eval_formula_expr_outcome T relname basesort instance unknown contains_nulls
+  (@eval_formula_expr_outcome T relname basesort instance unknown
     symbol_runtime_error aggregate_runtime_error value_is_null).
 Local Abbreviation eval_formula_aggregates :=
   (@eval_formula_expr_aggregate_runtime_error T relname
     symbol_runtime_error aggregate_runtime_error).
 Local Abbreviation eval_filter_rows :=
-  (@eval_filter_rows_outcome T relname basesort instance unknown contains_nulls
+  (@eval_filter_rows_outcome T relname basesort instance unknown
     symbol_runtime_error aggregate_runtime_error value_is_null).
 Local Abbreviation eval_groups :=
-  (@eval_groups_outcome T relname basesort instance unknown contains_nulls
+  (@eval_groups_outcome T relname basesort instance unknown
     symbol_runtime_error aggregate_runtime_error value_is_null).
 Local Abbreviation eval_group_bag :=
-  (@eval_group_bag_outcome T relname basesort instance unknown contains_nulls
+  (@eval_group_bag_outcome T relname basesort instance unknown
     symbol_runtime_error aggregate_runtime_error value_is_null).
 Local Abbreviation eval_join_row_conditions :=
-  (@eval_join_row_conditions_outcome T relname basesort instance unknown
-    contains_nulls symbol_runtime_error aggregate_runtime_error value_is_null).
+  (@eval_join_row_conditions_outcome T relname basesort instance unknown symbol_runtime_error aggregate_runtime_error value_is_null).
 Local Abbreviation eval_join_conditions :=
-  (@eval_join_conditions_outcome T relname basesort instance unknown
-    contains_nulls symbol_runtime_error aggregate_runtime_error value_is_null).
+  (@eval_join_conditions_outcome T relname basesort instance unknown symbol_runtime_error aggregate_runtime_error value_is_null).
 Local Abbreviation eval_join_bag :=
-  (@eval_join_bag_outcome T relname basesort instance unknown contains_nulls
+  (@eval_join_bag_outcome T relname basesort instance unknown
     symbol_runtime_error aggregate_runtime_error value_is_null).
 
 Ltac transport_formula_forward equivalence :=
@@ -110,6 +113,21 @@ Definition query_expr_global_outcome_equiv
     (left right : query_expr T relname) : Prop :=
   forall env outcome,
     eval_query env left outcome <-> eval_query env right outcome.
+
+(** EXISTS has a deliberately weaker, target-list-eliding observation than a
+    complete query result.  Ordinary row-outcome equivalence does not imply
+    this relation (for example, a failing target expression is dead only to
+    EXISTS), so it is tracked explicitly. *)
+Definition query_expr_global_cardinality_outcome_equiv
+    (left right : query_expr T relname) : Prop :=
+  forall env outcome,
+    eval_query_cardinality env left outcome <->
+    eval_query_cardinality env right outcome.
+
+Definition query_expr_global_exists_outcome_equiv
+    (left right : query_expr T relname) : Prop :=
+  forall env outcome,
+    eval_query_exists env left outcome <-> eval_query_exists env right outcome.
 
 Definition formula_expr_global_outcome_equiv
     (left right : formula_expr T relname) : Prop :=
@@ -160,6 +178,18 @@ Definition query_expr_global_typed_outcome_equiv
 
 Lemma query_expr_global_outcome_equiv_refl :
   forall query, query_expr_global_outcome_equiv query query.
+Proof.
+intros query env outcome; tauto.
+Qed.
+
+Lemma query_expr_global_cardinality_outcome_equiv_refl :
+  forall query, query_expr_global_cardinality_outcome_equiv query query.
+Proof.
+intros query env outcome; tauto.
+Qed.
+
+Lemma query_expr_global_exists_outcome_equiv_refl :
+  forall query, query_expr_global_exists_outcome_equiv query query.
 Proof.
 intros query env outcome; tauto.
 Qed.
@@ -273,17 +303,17 @@ Qed.
 
 Lemma formula_expr_exists_global_congr :
   forall first second,
-    query_expr_global_outcome_equiv first second ->
+    query_expr_global_exists_outcome_equiv first second ->
     formula_expr_global_outcome_equiv
       (FExpr_Exists first) (FExpr_Exists second).
 Proof.
 intros first second Hequiv env outcome; split; intro Heval; inversion Heval; subst.
-- apply EFormula_ExistsError. transport_query_forward Hequiv.
-- apply EFormula_ExistsSuccessEmpty. transport_query_forward Hequiv.
-- eapply EFormula_ExistsSuccessNonempty. transport_query_forward Hequiv.
-- apply EFormula_ExistsError. transport_query_backward Hequiv.
-- apply EFormula_ExistsSuccessEmpty. transport_query_backward Hequiv.
-- eapply EFormula_ExistsSuccessNonempty. transport_query_backward Hequiv.
+- constructor. eapply (proj1 (Hequiv _ _)); eassumption.
+- constructor. eapply (proj1 (Hequiv _ _)); eassumption.
+- econstructor. eapply (proj1 (Hequiv _ _)); eassumption.
+- constructor. eapply (proj2 (Hequiv _ _)); eassumption.
+- constructor. eapply (proj2 (Hequiv _ _)); eassumption.
+- econstructor. eapply (proj2 (Hequiv _ _)); eassumption.
 Qed.
 
 Lemma formula_expr_global_outcome_equiv_refl :
@@ -353,7 +383,7 @@ Qed.
 
 Lemma formula_expr_exists_global_group_congr :
   forall first second,
-    query_expr_global_outcome_equiv first second ->
+    query_expr_global_exists_outcome_equiv first second ->
     formula_expr_global_group_outcome_equiv
       (FExpr_Exists first) (FExpr_Exists second).
 Proof.
@@ -428,8 +458,13 @@ with formula_expr_context : Type :=
   | FCtx_Not : formula_expr_context -> formula_expr_context
   | FCtx_Quant : quantifier -> predicate T -> list (@aggterm T) ->
       query_expr_context -> formula_expr_context
-  | FCtx_In : list (@select T) -> query_expr_context -> formula_expr_context
-  | FCtx_Exists : query_expr_context -> formula_expr_context.
+  | FCtx_In : list (@select T) -> query_expr_context -> formula_expr_context.
+
+(** An EXISTS hole is intentionally not part of this ordinary-outcome context
+    grammar.  Substitution below assumes complete row-outcome equivalence,
+    which is not substitutive for target-list-eliding cardinality demand.  The
+    separate [formula_expr_exists_global_congr] theorem exposes the stronger
+    cardinality-equivalence premise explicitly. *)
 
 Fixpoint plug_query_expr_context
     (context : query_expr_context) (replacement : query_expr T relname)
@@ -509,8 +544,6 @@ with plug_formula_expr_context
         (plug_query_expr_context subquery replacement)
   | FCtx_In select_items subquery =>
       FExpr_In select_items (plug_query_expr_context subquery replacement)
-  | FCtx_Exists subquery =>
-      FExpr_Exists (plug_query_expr_context subquery replacement)
   end.
 
 (** Auxiliary relational traversals are congruent in their formula index. *)
@@ -970,6 +1003,28 @@ intros env outcome; split; intro Heval; inversion Heval; subst.
 - eapply EQuery_ProjectRows. transport_query_backward Hequiv.
 Qed.
 
+Lemma query_expr_scalar_project_global_typed_congr :
+  forall select_list first second,
+    query_expr_global_typed_outcome_equiv first second ->
+    query_expr_global_typed_outcome_equiv
+      (QExpr_ScalarProject select_list first)
+      (QExpr_ScalarProject select_list second).
+Proof.
+intros select_list first second [_ Hequiv].
+split; [reflexivity|].
+intros env outcome; split; intro Heval; inversion Heval; subst.
+- apply EQuery_ScalarProjectChildError.
+  transport_query_forward Hequiv.
+- eapply EQuery_ScalarProjectRows.
+  + transport_query_forward Hequiv.
+  + eassumption.
+- apply EQuery_ScalarProjectChildError.
+  transport_query_backward Hequiv.
+- eapply EQuery_ScalarProjectRows.
+  + transport_query_backward Hequiv.
+  + eassumption.
+Qed.
+
 Lemma query_expr_row_map_global_typed_congr :
   forall output_attributes row_map first second,
     query_expr_global_typed_outcome_equiv first second ->
@@ -1004,6 +1059,28 @@ intros env outcome; split; intro Heval; inversion Heval; subst.
 - eapply EQuery_FilterRows.
   + transport_query_backward Hinput.
   + now apply (proj2 (eval_filter_rows_formula_congr Hformula _ _ _)).
+Qed.
+
+Lemma query_expr_scalar_filter_global_typed_congr :
+  forall expression first second,
+    query_expr_global_typed_outcome_equiv first second ->
+    query_expr_global_typed_outcome_equiv
+      (QExpr_ScalarFilter expression first)
+      (QExpr_ScalarFilter expression second).
+Proof.
+intros expression first second [Houtputs Hequiv].
+split; [exact Houtputs|].
+intros env outcome; split; intro Heval; inversion Heval; subst.
+- apply EQuery_ScalarFilterChildError.
+  transport_query_forward Hequiv.
+- eapply EQuery_ScalarFilterRows.
+  + transport_query_forward Hequiv.
+  + eassumption.
+- apply EQuery_ScalarFilterChildError.
+  transport_query_backward Hequiv.
+- eapply EQuery_ScalarFilterRows.
+  + transport_query_backward Hequiv.
+  + eassumption.
 Qed.
 
 (** Typed filter congruence for predicates that preserve SQL errors and the
@@ -1063,6 +1140,38 @@ intros env outcome; split; intro Heval; inversion Heval; subst.
   + transport_query_backward Hinput.
   + now apply (proj2
       (eval_group_bag_formula_congr Hhaving env select_list group_terms _ _)).
+  + eassumption.
+Qed.
+
+Lemma query_expr_scalar_group_global_typed_congr :
+  forall select_list group_terms having input input',
+    query_expr_global_typed_outcome_equiv input input' ->
+    query_expr_global_typed_outcome_equiv
+      (QExpr_ScalarGroup select_list group_terms having input)
+      (QExpr_ScalarGroup select_list group_terms having input').
+Proof.
+intros select_list group_terms having input input' [_ Hinput].
+split; [reflexivity|].
+intros env outcome; split; intro Heval; inversion Heval; subst.
+- apply EQuery_ScalarGroupChildError.
+  transport_query_forward Hinput.
+- eapply EQuery_ScalarGroupBagError.
+  + transport_query_forward Hinput.
+  + eassumption.
+- eapply EQuery_ScalarGroupBagSuccess with
+    (input_rows := input_rows) (output_bag := output_bag).
+  + transport_query_forward Hinput.
+  + eassumption.
+  + eassumption.
+- apply EQuery_ScalarGroupChildError.
+  transport_query_backward Hinput.
+- eapply EQuery_ScalarGroupBagError.
+  + transport_query_backward Hinput.
+  + eassumption.
+- eapply EQuery_ScalarGroupBagSuccess with
+    (input_rows := input_rows) (output_bag := output_bag).
+  + transport_query_backward Hinput.
+  + eassumption.
   + eassumption.
 Qed.
 
@@ -1302,7 +1411,6 @@ apply query_context_mutind; intros; simpl.
 - apply formula_expr_not_global_group_congr. now apply H.
 - apply formula_expr_quant_global_group_congr. now apply H.
 - apply formula_expr_in_global_group_congr. now apply H.
-- apply formula_expr_exists_global_group_congr. now apply H.
 Qed.
 
 Theorem query_expr_context_global_congr :
@@ -1343,8 +1451,7 @@ Lemma query_expr_observation_equiv_of_outcome_rel_equiv_safe :
     query_expr_runtime_safe env first ->
     query_expr_runtime_safe env second ->
     query_expr_has_success env first ->
-    @query_expr_observation_equiv T relname basesort instance unknown
-      contains_nulls symbol_runtime_error aggregate_runtime_error value_is_null
+    @query_expr_observation_equiv T relname basesort instance unknown symbol_runtime_error aggregate_runtime_error value_is_null
       env first second.
 Proof.
 intros env first second Hequiv Hfirst_safe Hsecond_safe Hsuccess.
@@ -1370,7 +1477,7 @@ Lemma query_expr_equiv_of_outcome_rel_equiv_safe :
     query_expr_runtime_safe env first ->
     query_expr_runtime_safe env second ->
     query_expr_has_success env first ->
-    @query_expr_equiv T relname basesort instance unknown contains_nulls
+    @query_expr_equiv T relname basesort instance unknown
       symbol_runtime_error aggregate_runtime_error value_is_null env first second.
 Proof.
 intros env first second Houtputs Hequiv Hfirst_safe Hsecond_safe Hsuccess.
@@ -1387,7 +1494,7 @@ Theorem query_expr_context_equiv_safe :
       (plug_query_expr_context context replacement') ->
     query_expr_has_success env
       (plug_query_expr_context context replacement) ->
-    @query_expr_equiv T relname basesort instance unknown contains_nulls
+    @query_expr_equiv T relname basesort instance unknown
       symbol_runtime_error aggregate_runtime_error value_is_null env
       (plug_query_expr_context context replacement)
       (plug_query_expr_context context replacement').
@@ -1398,36 +1505,38 @@ apply query_expr_equiv_of_outcome_rel_equiv_safe; try assumption.
 apply Hraw.
 Qed.
 
-(** A bag-reset result can be recovered as an exact ordered-observation
-    equivalence once both result relations are known to be bag-closed.  The
+(** Possible-bag equality can be recovered as an exact ordered-observation
+    equivalence once both result relations are proved bag-closed.  The
     possible-bag equality is not by itself allowed to hide runtime failures:
     safety and existence of a successful observation remain explicit
     premises. *)
-Theorem query_bag_effect_equiv_of_success_bags_safe :
+Theorem query_bag_closed_equiv_of_success_bags_safe :
   forall env first second,
     query_expr_outputs first = query_expr_outputs second ->
-    query_expr_effect first = BagEffect ->
-    query_expr_effect second = BagEffect ->
+    BagClosed T
+      (fun rows => eval_query env first (SqlSuccess rows)) ->
+    BagClosed T
+      (fun rows => eval_query env second (SqlSuccess rows)) ->
     rel_equiv
-      (query_success_bags basesort instance unknown contains_nulls
+      (query_success_bags basesort instance unknown
         symbol_runtime_error aggregate_runtime_error value_is_null env first)
-      (query_success_bags basesort instance unknown contains_nulls
+      (query_success_bags basesort instance unknown
         symbol_runtime_error aggregate_runtime_error value_is_null env second) ->
     query_expr_runtime_safe env first ->
     query_expr_runtime_safe env second ->
     query_expr_has_success env first ->
-    @query_expr_equiv T relname basesort instance unknown contains_nulls
+    @query_expr_equiv T relname basesort instance unknown
       symbol_runtime_error aggregate_runtime_error value_is_null
       env first second.
 Proof.
-intros env first second Houtputs Hfirst_effect Hsecond_effect Hbags
+intros env first second Houtputs Hfirst_closed Hsecond_closed Hbags
   Hfirst_safe Hsecond_safe Hsuccess.
 split; [exact Houtputs|].
 apply (proj2
-  (@query_bag_effect_observation_equiv_iff_possible_bag_equiv
-    T relname basesort instance unknown contains_nulls
+  (@query_bag_closed_observation_equiv_iff_possible_bag_equiv
+    T relname basesort instance unknown
     symbol_runtime_error aggregate_runtime_error value_is_null
-    env first second Hfirst_effect Hsecond_effect)).
+    env first second Hfirst_closed Hsecond_closed)).
 unfold query_possible_bag_equiv.
 apply successful_relation_equiv_intro.
 - destruct Hsuccess as [rows Hrows].
@@ -1445,6 +1554,33 @@ apply successful_relation_equiv_intro.
   exists bag; split.
   + now apply (proj2 (Hbags bag)).
   + apply bag_eq_refl.
+Qed.
+
+(** Direct bag-reset constructors discharge the two semantic closure premises
+    above automatically.  Other constructors may use the general theorem only
+    when an independent, conditional closure proof is available. *)
+Corollary query_bag_reset_equiv_of_success_bags_safe :
+  forall env first second,
+    query_expr_outputs first = query_expr_outputs second ->
+    query_expr_order_behavior first = BagReset ->
+    query_expr_order_behavior second = BagReset ->
+    rel_equiv
+      (query_success_bags basesort instance unknown
+        symbol_runtime_error aggregate_runtime_error value_is_null env first)
+      (query_success_bags basesort instance unknown
+        symbol_runtime_error aggregate_runtime_error value_is_null env second) ->
+    query_expr_runtime_safe env first ->
+    query_expr_runtime_safe env second ->
+    query_expr_has_success env first ->
+    @query_expr_equiv T relname basesort instance unknown
+      symbol_runtime_error aggregate_runtime_error value_is_null
+      env first second.
+Proof.
+intros env first second Houtputs Hfirst_reset Hsecond_reset Hbags
+  Hfirst_safe Hsecond_safe Hsuccess.
+apply query_bag_closed_equiv_of_success_bags_safe; try assumption.
+- now apply query_bag_reset_sound.
+- now apply query_bag_reset_sound.
 Qed.
 
 (** Immediate [Distinct] is the canonical local reset principle.  A proof may
@@ -1467,13 +1603,13 @@ Theorem query_distinct_equiv_of_local_success_rel_equiv :
     query_expr_runtime_safe env (QExpr_Distinct left) ->
     query_expr_runtime_safe env (QExpr_Distinct right) ->
     query_expr_has_success env (QExpr_Distinct left) ->
-    @query_expr_equiv T relname basesort instance unknown contains_nulls
+    @query_expr_equiv T relname basesort instance unknown
       symbol_runtime_error aggregate_runtime_error value_is_null
       env (QExpr_Distinct left) (QExpr_Distinct right).
 Proof.
 intros env left right Houtputs Hforward Hbackward
   Hleft_safe Hright_safe Hsuccess.
-apply query_bag_effect_equiv_of_success_bags_safe.
+apply query_bag_reset_equiv_of_success_bags_safe.
 - exact Houtputs.
 - reflexivity.
 - reflexivity.
@@ -1490,10 +1626,10 @@ Qed.
     obligations are proved separately. *)
 Theorem query_distinct_local_list_equiv_congr :
   forall env left right,
-    @query_expr_equiv T relname basesort instance unknown contains_nulls
+    @query_expr_equiv T relname basesort instance unknown
       symbol_runtime_error aggregate_runtime_error value_is_null
       env left right ->
-    @query_expr_equiv T relname basesort instance unknown contains_nulls
+    @query_expr_equiv T relname basesort instance unknown
       symbol_runtime_error aggregate_runtime_error value_is_null
       env (QExpr_Distinct left) (QExpr_Distinct right).
 Proof.
@@ -1708,7 +1844,7 @@ Qed.
 
 Theorem query_expr_equiv_possible_bag_context_congr :
   forall env context first second,
-    @query_expr_equiv T relname basesort instance unknown contains_nulls
+    @query_expr_equiv T relname basesort instance unknown
       symbol_runtime_error aggregate_runtime_error value_is_null env first second ->
     possible_bag_query_boundary_equiv
       (query_expr_sort first) (query_expr_sort second)

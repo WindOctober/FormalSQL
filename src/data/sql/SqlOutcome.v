@@ -127,6 +127,78 @@ Definition outcome_relation_equiv {A : Type}
       left (SqlSuccess left_value) /\ value_equiv left_value right_value) /\
   (forall error, left (SqlError error) <-> right (SqlError error)).
 
+(** A relational evaluator has a unique successful observation modulo the
+    supplied semantic equality when every two successes are equivalent.  The
+    definition intentionally says nothing about errors: functionality is a
+    certificate about the successful observation set, not a safety claim. *)
+Definition successful_relation_functional {A : Type}
+    (value_equiv : A -> A -> Prop)
+    (outcomes : sql_outcome A -> Prop) : Prop :=
+  forall left_value right_value,
+    outcomes (SqlSuccess left_value) ->
+    outcomes (SqlSuccess right_value) ->
+    value_equiv left_value right_value.
+
+(** A countermodel for relational observations must distinguish one legal
+    outcome from *every* outcome on the opposite side.  The four constructors
+    record the direction and whether the witness is a success or an error.
+    They therefore cover sequence-valued observations and runtime failures
+    without selecting an arbitrary representative from either relation. *)
+Inductive outcome_relation_separation {A : Type}
+    (value_equiv : A -> A -> Prop)
+    (left right : sql_outcome A -> Prop) : Prop :=
+  | OutcomeSeparationLeftSuccess :
+      forall left_value,
+        left (SqlSuccess left_value) ->
+        (forall right_value,
+          right (SqlSuccess right_value) ->
+          ~ value_equiv left_value right_value) ->
+        outcome_relation_separation value_equiv left right
+  | OutcomeSeparationRightSuccess :
+      forall right_value,
+        right (SqlSuccess right_value) ->
+        (forall left_value,
+          left (SqlSuccess left_value) ->
+          ~ value_equiv left_value right_value) ->
+        outcome_relation_separation value_equiv left right
+  | OutcomeSeparationLeftError :
+      forall error,
+        left (SqlError error) ->
+        ~ right (SqlError error) ->
+        outcome_relation_separation value_equiv left right
+  | OutcomeSeparationRightError :
+      forall error,
+        right (SqlError error) ->
+        ~ left (SqlError error) ->
+        outcome_relation_separation value_equiv left right.
+
+(** Directional separation is a kernel-checkable refutation of complete
+    outcome-relation equivalence. *)
+Lemma outcome_relation_separation_sound :
+  forall (A : Type) (value_equiv : A -> A -> Prop)
+    (left right : sql_outcome A -> Prop),
+    outcome_relation_separation value_equiv left right ->
+    ~ outcome_relation_equiv value_equiv left right.
+Proof.
+intros A value_equiv left right Hseparation
+  [_ [_ [Hforward [Hbackward Herrors]]]].
+destruct Hseparation as
+  [left_value Hleft Hseparate
+  | right_value Hright Hseparate
+  | error Hleft Hseparate
+  | error Hright Hseparate].
+- destruct (Hforward left_value Hleft)
+    as [right_value [Hright Hequivalent]].
+  exact (Hseparate right_value Hright Hequivalent).
+- destruct (Hbackward right_value Hright)
+    as [left_value [Hleft Hequivalent]].
+  exact (Hseparate left_value Hleft Hequivalent).
+- apply Hseparate.
+  now apply (proj1 (Herrors error)).
+- apply Hseparate.
+  now apply (proj2 (Herrors error)).
+Qed.
+
 Lemma outcome_equiv_refl :
   forall (A : Type) (value_equiv : A -> A -> Prop),
     (forall value, value_equiv value value) ->

@@ -13,7 +13,8 @@
 
 Require Import ZArith String Bool.
 Require Import OrderedSet.
-Require Export ValueCore ValueFloat ValueInteger ValueNumericTypmod ValueString.
+Require Export ValueCore ValueFloat ValueInteger ValueNumericTypmod ValueString
+  ValueTextInteger.
 
 Module NullValueDomain.
 

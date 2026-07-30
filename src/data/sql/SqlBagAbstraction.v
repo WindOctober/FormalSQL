@@ -8,15 +8,17 @@
 
 Set Implicit Arguments.
 
-From Stdlib Require Import List.
+From Stdlib Require Import List Sorting.Permutation.
 
-Require Import OrderedSet FiniteBag FiniteCollection FlatData SqlOutcome.
+Require Import ListPermut OrderedSet FiniteBag FiniteCollection FlatData SqlOutcome.
 
-(** Ordered row-list outcomes are the single exact query semantics.  [alpha]
-    maps them to possible bags; [gamma] forgets order by permutation closure
-    and is therefore an over-approximation.  [BagClosed] characterizes exactly
-    the observation relations for which this abstraction is complete for
-    equivalence. *)
+(** Ordered row-list outcomes are the single exact evaluator semantics.
+    [ordered_rows_equiv] is the SQL observation boundary: it retains order and
+    multiplicity while hiding tuple representation details.  [alpha] then
+    maps ordered observations to possible bags.  [BagClosed] states exactly
+    the recovery property needed to return from a possible bag to an ordered
+    SQL observation; it never requires the evaluator to manufacture a chosen
+    hidden Rocq tuple representation. *)
 
 Section Sec.
 
@@ -128,16 +130,100 @@ Definition alpha (observations : list tuple -> Prop) : bagT -> Prop :=
 Definition gamma (bags : bagT -> Prop) : list tuple -> Prop :=
   fun rows => bags (rows_bag rows).
 
-Definition permutation_closure
-    (observations : list tuple -> Prop) : list tuple -> Prop :=
-  gamma (alpha observations).
-
-(** A list observation relation is bag-closed exactly when membership depends
-    only on the represented bag. *)
+(** A relation is bag-closed when every possible result bag can be realized in
+    any requested row order, up to the SQL-visible row equality
+    [ordered_rows_equiv].  [desired] is an observation request, not a concrete
+    evaluator output: the witness [actual] must be produced by the evaluator,
+    but its hidden tuple representation need not be identical to [desired]. *)
 Definition BagClosed (observations : list tuple -> Prop) : Prop :=
-  forall left right,
-    bag_eq (rows_bag left) (rows_bag right) ->
-    (observations left <-> observations right).
+  forall desired,
+    alpha observations (rows_bag desired) ->
+    exists actual,
+      observations actual /\
+      ordered_rows_equiv desired actual.
+
+(** Concrete permutation closure is an implementation certificate for
+    [BagClosed], not a second observation semantics.  It deliberately talks
+    only about reordering the very same Rocq row representatives.  This makes
+    it compositional through order-preserving row operators even when their
+    callbacks are not setoid morphisms. *)
+Definition ConcretePermutationClosed
+    (observations : list tuple -> Prop) : Prop :=
+  forall source desired,
+    Permutation source desired ->
+    observations source ->
+    observations desired.
+
+(** A semantic bag equality can be aligned by permuting the concrete rows on
+    the left.  The aligned list uses no new tuple representatives; only its
+    order changes, while it compares positionally equal to the requested
+    right-hand list. *)
+Lemma bag_eq_rows_has_concrete_alignment :
+  forall source desired,
+    bag_eq (rows_bag source) (rows_bag desired) ->
+    exists actual,
+      Permutation source actual /\
+      ordered_rows_equiv desired actual.
+Proof.
+intros source desired Hbags.
+assert (Hpermut : Oeset.permut (OTuple T) source desired).
+{
+  apply Oeset.nb_occ_permut; intro row.
+  unfold bag_eq, rows_bag in Hbags.
+  rewrite Febag.nb_occ_equal in Hbags.
+  specialize (Hbags row).
+  now rewrite 2 Febag.nb_occ_mk_bag in Hbags.
+}
+clear Hbags.
+revert source Hpermut.
+induction desired as [|desired_row desired IH]; intros source Hpermut.
+- pose proof (Oeset.permut_length Hpermut) as Hlength.
+  destruct source as [|source_row source]; [|discriminate].
+  exists nil; split; [constructor | apply ordered_rows_equiv_refl].
+- destruct (_permut_inv_right Hpermut)
+    as [source_row [prefix [suffix [Hrow [Hsource Hrest]]]]].
+  subst source.
+  destruct (IH _ Hrest) as [aligned [Haligned Hordered]].
+  exists (source_row :: aligned); split.
+  + eapply Permutation_trans.
+    * apply Permutation_sym, Permutation_middle.
+    * now apply perm_skip.
+  + unfold ordered_rows_equiv in *; simpl.
+    pose proof (Oeset.compare_eq_sym (OTuple T) source_row desired_row Hrow)
+      as Hrow'.
+    rewrite Hrow'.
+    exact Hordered.
+Qed.
+
+Lemma concrete_permutation_closed_implies_bag_closed :
+  forall observations,
+    ConcretePermutationClosed observations ->
+    BagClosed observations.
+Proof.
+intros observations Hclosed desired [source [Hsource Hbags]].
+destruct (bag_eq_rows_has_concrete_alignment source desired Hbags)
+  as [actual [Hpermutation Hordered]].
+exists actual; split.
+- exact (Hclosed source actual Hpermutation Hsource).
+- exact Hordered.
+Qed.
+
+(** Exact representative transport is a sufficient implementation principle
+    for [BagClosed], notably at bag-reset constructors.  It is intentionally
+    not exposed as a second closure notion. *)
+Lemma bag_closed_of_exact_transport :
+  forall observations,
+    (forall first second,
+      bag_eq (rows_bag first) (rows_bag second) ->
+      observations first ->
+      observations second) ->
+    BagClosed observations.
+Proof.
+intros observations Htransport desired [source [Hsource Hbags]].
+exists desired; split.
+- eapply Htransport; [exact Hbags | exact Hsource].
+- apply ordered_rows_equiv_refl.
+Qed.
 
 Lemma alpha_extensional :
   forall observations,
@@ -153,15 +239,6 @@ split.
   exists rows; split; [exact Hrows |].
   eapply bag_eq_trans; [exact Hright |].
   now apply bag_eq_sym.
-Qed.
-
-Lemma observations_in_permutation_closure :
-  forall observations,
-    rel_incl observations (permutation_closure observations).
-Proof.
-intros observations rows Hrows.
-unfold permutation_closure, gamma, alpha.
-exists rows; split; [exact Hrows | apply bag_eq_refl].
 Qed.
 
 Lemma alpha_gamma_rel_equiv :
@@ -184,57 +261,16 @@ split.
   + exact Hrepresentation.
 Qed.
 
-Lemma permutation_closure_iff_bag_eq :
-  forall observations rows,
-    permutation_closure observations rows <->
-    exists source,
-      observations source /\
-      bag_eq (rows_bag source) (rows_bag rows).
-Proof.
-intros observations rows; reflexivity.
-Qed.
-
-Lemma bag_closed_iff_fixed_point :
-  forall observations,
-    BagClosed observations <->
-    rel_equiv (permutation_closure observations) observations.
-Proof.
-intro observations.
-split.
-- intros Hclosed rows.
-  split.
-  + rewrite permutation_closure_iff_bag_eq.
-    intros [source [Hsource Heq]].
-    exact (proj1 (Hclosed _ _ Heq) Hsource).
-  + apply observations_in_permutation_closure.
-- intros Hfixed left right Heq.
-  split; intro Hrows.
-  + apply (proj1 (Hfixed right)).
-    rewrite permutation_closure_iff_bag_eq.
-    exists left; now split.
-  + apply (proj1 (Hfixed left)).
-    rewrite permutation_closure_iff_bag_eq.
-    exists right; split; [exact Hrows | now apply bag_eq_sym].
-Qed.
-
 Lemma gamma_bag_closed :
   forall bags,
     possible_bag_extensional bags ->
     BagClosed (gamma bags).
 Proof.
-intros bags Hext left right Heq.
-unfold gamma.
-now apply Hext.
-Qed.
-
-Lemma permutation_closure_bag_closed :
-  forall observations,
-    BagClosed (permutation_closure observations).
-Proof.
-intro observations.
-unfold permutation_closure.
-apply gamma_bag_closed.
-apply alpha_extensional.
+intros bags Hext desired [source [Hsource Hbags]].
+exists desired; split.
+- unfold gamma in *.
+  now apply (proj1 (Hext _ _ Hbags)).
+- apply ordered_rows_equiv_refl.
 Qed.
 
 Lemma alpha_congr :
@@ -249,33 +285,6 @@ split; intros [rows [Hrows Heq]]; exists rows; split.
 - exact Heq.
 - now apply (proj2 (Hequiv rows)).
 - exact Heq.
-Qed.
-
-Theorem bag_closed_rel_equiv_iff_alpha_rel_equiv :
-  forall left right,
-    BagClosed left ->
-    BagClosed right ->
-    (rel_equiv left right <-> rel_equiv (alpha left) (alpha right)).
-Proof.
-intros left right Hleft_closed Hright_closed.
-split.
-- apply alpha_congr.
-- intros Halpha rows.
-  split; intro Hrows.
-  + assert (Hpossible : alpha left (rows_bag rows)).
-    {
-      exists rows; split; [exact Hrows | apply bag_eq_refl].
-    }
-    apply (proj1 (Halpha (rows_bag rows))) in Hpossible.
-    destruct Hpossible as [source [Hsource Heq]].
-    exact (proj1 (Hright_closed _ _ Heq) Hsource).
-  + assert (Hpossible : alpha right (rows_bag rows)).
-    {
-      exists rows; split; [exact Hrows | apply bag_eq_refl].
-    }
-    apply (proj2 (Halpha (rows_bag rows))) in Hpossible.
-    destruct Hpossible as [source [Hsource Heq]].
-    exact (proj1 (Hleft_closed _ _ Heq) Hsource).
 Qed.
 
 (** Bag operations are relations so that the abstract layer also supports
@@ -332,6 +341,74 @@ Definition lift_possible_bag_binary
       left_inputs left_input /\
       right_inputs right_input /\
       operation left_input right_input output.
+
+(** Functionality here is always modulo semantic bag equality.  These three
+    contracts are deliberately independent of any query constructor: they
+    describe a possible-bag relation, a unary bag operator, and a binary bag
+    operator respectively. *)
+Definition possible_bag_functional (bags : bagT -> Prop) : Prop :=
+  forall first second,
+    bags first -> bags second -> bag_eq first second.
+
+Definition unary_bag_relation_functional
+    (operation : unary_bag_relation) : Prop :=
+  forall input first second,
+    operation input first -> operation input second -> bag_eq first second.
+
+Definition binary_bag_relation_functional
+    (operation : binary_bag_relation) : Prop :=
+  forall left_input right_input first second,
+    operation left_input right_input first ->
+    operation left_input right_input second ->
+    bag_eq first second.
+
+(** A functional family of possible inputs remains functional after a
+    functional extensional unary relation.  Extensionality is essential: the
+    two input witnesses need only be bag-equal, not Leibniz-equal. *)
+Lemma lift_possible_bag_unary_functional :
+  forall operation inputs,
+    unary_bag_relation_extensional operation ->
+    unary_bag_relation_functional operation ->
+    possible_bag_functional inputs ->
+    possible_bag_functional (lift_possible_bag_unary operation inputs).
+Proof.
+intros operation inputs Hext Hoperation Hinputs first second
+  [first_input [Hfirst_input Hfirst]]
+  [second_input [Hsecond_input Hsecond]].
+pose proof
+  (Hinputs first_input second_input Hfirst_input Hsecond_input) as Hinput.
+apply (Hoperation first_input first second Hfirst).
+apply (proj2
+  (Hext first_input second_input second second
+    Hinput (bag_eq_refl second))).
+exact Hsecond.
+Qed.
+
+(** Binary lifting uses the same quotient-respecting argument independently
+    for both child relations. *)
+Lemma lift_possible_bag_binary_functional :
+  forall operation left_inputs right_inputs,
+    binary_bag_relation_extensional operation ->
+    binary_bag_relation_functional operation ->
+    possible_bag_functional left_inputs ->
+    possible_bag_functional right_inputs ->
+    possible_bag_functional
+      (lift_possible_bag_binary operation left_inputs right_inputs).
+Proof.
+intros operation left_inputs right_inputs Hext Hoperation Hleft_inputs
+  Hright_inputs first second
+  [first_left [first_right [Hfirst_left [Hfirst_right Hfirst]]]]
+  [second_left [second_right [Hsecond_left [Hsecond_right Hsecond]]]].
+pose proof
+  (Hleft_inputs first_left second_left Hfirst_left Hsecond_left) as Hleft.
+pose proof
+  (Hright_inputs first_right second_right Hfirst_right Hsecond_right) as Hright.
+apply (Hoperation first_left first_right first second Hfirst).
+apply (proj2
+  (Hext first_left second_left first_right second_right second second
+    Hleft Hright (bag_eq_refl second))).
+exact Hsecond.
+Qed.
 
 Lemma lift_possible_bag_unary_extensional :
   forall operation inputs,
@@ -453,10 +530,6 @@ Definition outcome_alpha
     | SqlError error => observations (SqlError error)
     end.
 
-Definition OutcomeBagClosed
-    (observations : sql_outcome (list tuple) -> Prop) : Prop :=
-  BagClosed (fun rows => observations (SqlSuccess rows)).
-
 Lemma outcome_alpha_extensional :
   forall observations,
     possible_bag_extensional
@@ -470,8 +543,8 @@ Qed.
     sound and complete for Logos's success-only equivalence contract. *)
 Theorem successful_relation_equiv_iff_outcome_alpha :
   forall left right,
-    OutcomeBagClosed left ->
-    OutcomeBagClosed right ->
+    BagClosed (fun rows => left (SqlSuccess rows)) ->
+    BagClosed (fun rows => right (SqlSuccess rows)) ->
     (successful_relation_equiv ordered_rows_equiv left right <->
      successful_relation_equiv bag_eq
          (outcome_alpha left) (outcome_alpha right)).
@@ -534,9 +607,12 @@ split.
            eapply bag_eq_trans; [exact Hright_bag |].
            now apply bag_eq_sym.
          }
-         exists left_rows; split.
-         ++ exact (proj1 (Hright_closed _ _ Hrows_bag) Hright_rows).
-         ++ apply ordered_rows_equiv_refl.
+         destruct (Hright_closed left_rows) as [actual [Hactual Hordered]].
+         {
+           unfold alpha.
+           exists right_rows; now split.
+         }
+         now exists actual.
       -- intros right_rows Hright_rows.
          assert (Hright_bag : outcome_alpha right (SqlSuccess (rows_bag right_rows))).
          {
@@ -548,9 +624,13 @@ split.
          {
            eapply bag_eq_trans; [exact Hleft_bag | exact Hbags].
          }
-         exists right_rows; split.
-         ++ exact (proj1 (Hleft_closed _ _ Hrows_bag) Hleft_rows).
-         ++ apply ordered_rows_equiv_refl.
+         destruct (Hleft_closed right_rows) as [actual [Hactual Hordered]].
+         {
+           unfold alpha.
+           exists left_rows; now split.
+         }
+         exists actual; split; [exact Hactual |].
+         now apply ordered_rows_equiv_sym.
 Qed.
 
 (** The same abstraction is complete for error-preserving equivalence.  Row
@@ -558,8 +638,8 @@ Qed.
     runtime-error categories remain exact outer observations. *)
 Theorem outcome_relation_equiv_iff_outcome_alpha :
   forall left right,
-    OutcomeBagClosed left ->
-    OutcomeBagClosed right ->
+    BagClosed (fun rows => left (SqlSuccess rows)) ->
+    BagClosed (fun rows => right (SqlSuccess rows)) ->
     (outcome_relation_equiv ordered_rows_equiv left right <->
      outcome_relation_equiv bag_eq
        (outcome_alpha left) (outcome_alpha right)).
@@ -621,9 +701,12 @@ split.
       eapply bag_eq_trans; [exact Hright_bag |].
       now apply bag_eq_sym.
     }
-    exists left_rows; split.
-    * exact (proj1 (Hright_closed _ _ Hrows_bag) Hright_rows).
-    * apply ordered_rows_equiv_refl.
+    destruct (Hright_closed left_rows) as [actual [Hactual Hordered]].
+    {
+      unfold alpha.
+      exists right_rows; now split.
+    }
+    now exists actual.
   + intros right_rows Hright_rows.
     assert (Hright_bag : outcome_alpha right (SqlSuccess (rows_bag right_rows))).
     {
@@ -635,9 +718,13 @@ split.
     {
       eapply bag_eq_trans; [exact Hleft_bag | exact Hbags].
     }
-    exists right_rows; split.
-    * exact (proj1 (Hleft_closed _ _ Hrows_bag) Hleft_rows).
-    * apply ordered_rows_equiv_refl.
+    destruct (Hleft_closed right_rows) as [actual [Hactual Hordered]].
+    {
+      unfold alpha.
+      exists left_rows; now split.
+    }
+    exists actual; split; [exact Hactual |].
+    now apply ordered_rows_equiv_sym.
   + intro error; simpl in *; apply Herrors.
 Qed.
 

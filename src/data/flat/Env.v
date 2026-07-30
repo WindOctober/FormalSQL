@@ -40,6 +40,13 @@ Definition env_g (env : env) g s :=
    | t :: _ => labels T t 
    end, g, s) :: env.
 
+(** Exact environment congruence preserves the order of rows in every group.
+    This is stronger than bag permutation: order-sensitive aggregates such as
+    floating-point SUM and AVG must be allowed to distinguish two different
+    representatives of the same input bag. *)
+Definition env_rows_equiv (x1 x2 : list (tuple T)) : Prop :=
+  Oeset.compare (mk_oelists (OTuple T)) x1 x2 = Eq.
+
 Lemma env_t_env_g : forall env t, env_t env t = env_g env Group_Fine (t :: nil).
 Proof.
 intros env t; apply refl_equal.
@@ -48,7 +55,7 @@ Qed.
 Definition equiv_env_slice (e1 e2 : (Fset.set (A T) * group_by * (list (tuple T)))) := 
   match e1, e2 with
     | (sa1, g1, x1), (sa2, g2, x2) => 
-      sa1 =S= sa2 /\ g1 = g2 /\ x1 =PE= x2
+      sa1 =S= sa2 /\ g1 = g2 /\ env_rows_equiv x1 x2
   end.
 
 Definition equiv_env e1 e2 := Forall2 equiv_env_slice e1 e2.
@@ -58,7 +65,7 @@ Proof.
 intro e; unfold equiv_env; induction e as [ | [[sa g] l] e]; simpl; trivial.
 constructor 2; [simpl; repeat split | apply IHe].
 - apply Fset.equal_refl.
-- apply Oeset.permut_refl.
+- apply Oeset.compare_eq_refl.
 Qed.
 
 Lemma equiv_env_sym :
@@ -78,7 +85,8 @@ assert (H : forall e1 e2, equiv_env e1 e2 -> equiv_env e2 e1).
     destruct H3 as [K1 [K2 K3]].
     split; [rewrite <- (Fset.equal_eq_1 _ _ _ _ K1); apply Fset.equal_refl | ].
     split; [apply sym_eq; assumption | ].
-    apply Oeset.permut_sym; apply K3.
+    unfold env_rows_equiv in *.
+    apply Oeset.compare_eq_sym; exact K3.
 }
 intros e1 e2; split; apply H.
 Qed.
@@ -147,7 +155,7 @@ intros e1 e2 x He.
 constructor 2; [ | apply He].
 simpl; repeat split.
 - apply Fset.equal_refl.
-- apply Oeset.permut_refl.
+- apply Oeset.compare_eq_refl.
 Qed.
 
 Lemma env_t_eq_2 :
@@ -157,8 +165,7 @@ intros e x1 x2 Hx.
 constructor 2.
 - simpl; repeat split.
   + rewrite tuple_eq in Hx; apply (proj1 Hx).
-  + simpl; apply compare_list_t; unfold compare_OLA; simpl.
-    rewrite Hx; apply refl_equal.
+  + unfold env_rows_equiv; simpl; rewrite Hx; apply refl_equal.
 - apply equiv_env_refl.
 Qed.
 
@@ -169,8 +176,7 @@ intros e1 e2 x1 x2 He Hx.
 constructor 2; [ | apply He].
 simpl; repeat split.
 - rewrite tuple_eq in Hx; apply (proj1 Hx).
-- simpl; apply compare_list_t; unfold compare_OLA; simpl.
-  rewrite Hx; apply refl_equal.
+- unfold env_rows_equiv; simpl; rewrite Hx; apply refl_equal.
 Qed.
 
 Lemma env_g_eq_1 :
@@ -180,27 +186,32 @@ intros e1 e2 g x He.
 constructor 2; [ | apply He].
 simpl; repeat split.
 - apply Fset.equal_refl.
-- apply Oeset.permut_refl.
+- apply Oeset.compare_eq_refl.
 Qed.
 
 Lemma env_g_eq_2 :
-  forall e g x1 x2, x1 =PE= x2 ->  equiv_env (env_g e g x1) (env_g e g x2).
+  forall e g x1 x2, env_rows_equiv x1 x2 ->
+    equiv_env (env_g e g x1) (env_g e g x2).
 Proof.
 intros e g x1 x2 Hx.
 constructor 2.
 - simpl; repeat split.
-  + apply env_slice_eq_1; simpl; rewrite <- compare_list_t; assumption.
+  + apply env_slice_eq_1; simpl; rewrite <- compare_list_t.
+    apply Oeset.permut_refl_alt; exact Hx.
   + assumption.
 - apply equiv_env_refl.
 Qed.
 
 Lemma env_g_eq :
-  forall e1 e2 g x1 x2, equiv_env e1 e2 -> x1 =PE= x2 -> equiv_env (env_g e1 g x1) (env_g e2 g x2).
+  forall e1 e2 g x1 x2,
+    equiv_env e1 e2 -> env_rows_equiv x1 x2 ->
+    equiv_env (env_g e1 g x1) (env_g e2 g x2).
 Proof.
 intros e1 e2 g x1 x2 He Hx.
 constructor 2; [ | apply He].
 - simpl; repeat split.
-  + apply env_slice_eq_1; simpl; rewrite <- compare_list_t; assumption.
+  + apply env_slice_eq_1; simpl; rewrite <- compare_list_t.
+    apply Oeset.permut_refl_alt; exact Hx.
   + assumption.
 Qed.
 
@@ -213,8 +224,7 @@ intros e x1 x2 Hx.
 constructor 2.
 - simpl; repeat split.
   + rewrite tuple_eq in Hx; apply (proj1 Hx).
-  + simpl; apply compare_list_t; unfold compare_OLA; simpl.
-    rewrite Hx; apply refl_equal.
+  + unfold env_rows_equiv; simpl; rewrite Hx; apply refl_equal.
 - apply equiv_env_refl.
 Qed.
 
@@ -244,23 +254,23 @@ Ltac env_tac :=
                        (env_g ?T ?e ?g (?x2 :: nil)) =>
       rewrite <- !env_t_env_g; apply env_t_eq_2; assumption
 
-    | Hx : Oeset.compare (Tuple.OLTuple ?T) ?x1 ?x2 = Eq
+    | Hx : Oeset.compare (mk_oelists (Tuple.OTuple ?T)) ?x1 ?x2 = Eq
       |- equiv_env ?T (env_g ?T ?e ?g ?x1) (env_g ?T ?e ?g ?x2) =>
-      apply env_g_eq_2; rewrite compare_list_t; assumption
+      apply env_g_eq_2; exact Hx
 
     | He : equiv_env _ ?e1 ?e2
       |- equiv_env _ (env_g _ ?e1 ?g ?x) (env_g _ ?e2 ?g ?x) =>
       apply env_g_eq_1; assumption
 
-    | He : equiv_env _ ?e1 ?e2, 
-      Hx : Oeset.compare _ ?x1 ?x2 = Eq 
+    | He : equiv_env _ ?e1 ?e2,
+      Hx : Oeset.compare (mk_oelists (Tuple.OTuple _)) ?x1 ?x2 = Eq
       |- equiv_env _ (env_g _ ?e1 ?g ?x1) (env_g _ ?e2 ?g ?x2) =>
-      apply env_g_eq; [ | rewrite compare_list_t]; assumption
+      apply env_g_eq; assumption
 
-    | Hl : comparelA (Oeset.compare _) ?l1 ?l2 = Eq 
-      |- equiv_env ?T (env_g ?T ?e (Group_By ?T ?g) ?l1) 
+    | Hl : comparelA (Oeset.compare _) ?l1 ?l2 = Eq
+      |- equiv_env ?T (env_g ?T ?e (Group_By ?T ?g) ?l1)
                          (env_g ?T ?e (Group_By ?T ?g) ?l2) =>
-      apply env_g_eq_2; apply Oeset.permut_refl_alt; assumption
+      apply env_g_eq_2; exact Hl
 
     | _ =>  trivial; fail
   end.

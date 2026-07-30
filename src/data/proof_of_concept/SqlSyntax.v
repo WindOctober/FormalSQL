@@ -101,19 +101,24 @@ Definition value_conforms_attribute (att : attribute) (val : value) : Prop :=
       | None => True
       | Some time => time_in_range_bool time = true
       end
-  | Attr_timestamp _ _, NullValues.Value_timestamp payload
-  | Attr_timestamptz _ _, NullValues.Value_timestamptz payload =>
+  | Attr_timestamp _ precision, NullValues.Value_timestamp payload
+  | Attr_timestamptz _ precision, NullValues.Value_timestamptz payload =>
       match payload with
       | None => True
-      | Some timestamp => timestamp_value_valid_bool timestamp = true
+      | Some timestamp =>
+          timestamp_fits_precision_bool timestamp precision = true
+      end
+  | Attr_numeric _, NullValues.Value_numeric payload =>
+      match payload with
+      | None => True
+      | Some value => numeric_runtime_fits_bool value = true
       end
   | Attr_Z _, NullValues.Value_Z _
   | Attr_int32 _, NullValues.Value_int32 _
   | Attr_int64 _, NullValues.Value_int64 _
   | Attr_bool _, NullValues.Value_bool _
   | Attr_float _, NullValues.Value_float _
-  | Attr_double _, NullValues.Value_double _
-  | Attr_numeric _, NullValues.Value_numeric _ => True
+  | Attr_double _, NullValues.Value_double _ => True
   | _, _ => False
   end.
 

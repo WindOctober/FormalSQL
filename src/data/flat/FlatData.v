@@ -89,7 +89,7 @@ destruct e as [f | a f | f la].
       -- simpl in We; simpl.
          rewrite !Bool.Bool.andb_true_iff in We; destruct We as [[[W1 W2] W3] W4].
          rewrite !Bool.Bool.andb_true_iff; repeat split; trivial.
-         ++ rewrite forallb_forall in W2; apply W2; rewrite (In_quicksort (OTuple T)); assumption.
+         ++ rewrite forallb_forall in W2; apply W2; assumption.
       -- assumption.
       -- intros b Hb; simpl in Hb.
          apply He; apply Hb.
@@ -191,7 +191,7 @@ destruct e as [f | a f | f la].
          ++ simpl; rewrite !Bool.Bool.andb_true_iff;
               intros [[[W1 W2] W3] W4]; repeat split; trivial.
             rewrite forallb_forall in W2; apply W2.
-            apply (In_quicksort (OTuple T)); apply Hx.
+            exact Hx.
          ++ intro W; apply IHenv1'.
             simpl in W; rewrite Bool.Bool.andb_true_iff in W; apply (proj2 W).
 - simpl; apply f_equal; rewrite <- map_eq; intros x Hx.

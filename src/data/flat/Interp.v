@@ -70,7 +70,7 @@ Fixpoint find_eval_env (env : env T) f :=
 
 Definition unfold_env_slice (s : env_slice T) :=
   match s with
-  | (sa, g, l) => List.map (fun t => (sa, Group_Fine T, t :: nil)) (quicksort (OTuple T) l)
+  | (sa, g, l) => List.map (fun t => (sa, Group_Fine T, t :: nil)) l
   end.
 
 Fixpoint interp_aggterm (env : env T) (agt : aggterm T) := 
@@ -229,15 +229,18 @@ intros a e1; induction e1 as [ | [[sa1 g1] l1] e1]; intros [ | [[sa2 g2] l2] e2]
 - inversion H.
 - simpl in H; inversion H as [ | slc1 slc2 _e1 _e2 Hs He]; subst slc1 slc2 _e1 _e2.
   simpl in Hs; destruct Hs as [H3 [H2 H1]]; simpl.
-  assert (Ll := Oeset.permut_length H1).
+  unfold env_rows_equiv in H1.
+  assert (Hperm := Oeset.permut_refl_alt (OTuple T) l1 l2 H1).
+  assert (Ll := Oeset.permut_length Hperm).
   rewrite <- (length_quicksort (OTuple T) l1) in Ll.
   rewrite <- (length_quicksort (OTuple T) l2) in Ll.
-  rewrite compare_list_t in H1; unfold compare_OLA in H1.
+  rewrite compare_list_t in Hperm; unfold compare_OLA in Hperm.
   destruct (quicksort (OTuple T) l1) as [ | x1 q1];
     destruct (quicksort (OTuple T) l2) as [ | x2 q2]; try discriminate Ll.
   + apply IHe1; assumption.
-  + simpl in H1.
-    case_eq (Oeset.compare (OTuple T) x1 x2); intro Hx; rewrite Hx in H1; try discriminate H1.
+  + simpl in Hperm.
+    case_eq (Oeset.compare (OTuple T) x1 x2); intro Hx;
+      rewrite Hx in Hperm; try discriminate Hperm.
     rewrite tuple_eq in Hx.
     rewrite <- (Fset.mem_eq_2 _ _ _ (proj1 Hx)).
     case_eq (a inS? labels T x1); intro Ha.
@@ -304,18 +307,15 @@ Lemma unfold_env_slice_eq :
 Proof.
 intros [[sa1 g1] l1] [[sa2 g2] l2]; simpl.
 intros [Hs [Hg Hl]].
-rewrite compare_list_t in Hl; unfold compare_OLA in Hl.
-set (q1 := quicksort (OTuple T) l1) in *.
-set (q2 := quicksort (OTuple T) l2) in *.
-clearbody q1 q2.
-revert q2 Hl; induction q1 as [ | x1 q1]; intros [ | x2 q2] Hq; try discriminate Hq; simpl.
+unfold env_rows_equiv in Hl.
+revert l2 Hl; induction l1 as [ | x1 l1]; intros [ | x2 l2] Hq;
+  try discriminate Hq; simpl.
 - constructor 1.
 - simpl in Hq.
   case_eq (Oeset.compare (OTuple T) x1 x2); intro Hx; rewrite Hx in Hq; try discriminate Hq.
-  constructor 2; [ | apply IHq1; assumption].
+  constructor 2; [ | apply IHl1; assumption].
   simpl; repeat split; trivial.
-  apply (@Pcons _ _ (fun x y => Oeset.compare (Tuple.OTuple _) x y = Eq)
-                        x1 x2 nil nil nil Hx (Pnil _)).
+  unfold env_rows_equiv; simpl; rewrite Hx; reflexivity.
 Qed.
 
 Lemma find_eval_env_eq :

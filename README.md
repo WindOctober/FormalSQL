@@ -5,7 +5,8 @@ A Coq mechanized executable formal semantics for realistic SQL queries
 This repository is forked from
 [formaldata/sqlformalsemantics](https://framagit.org/formaldata/sqlformalsemantics).
 The `master` branch of this fork tracks the Rocq modernization work while
-preserving the original formal semantics.
+retaining the original tuple, value, and bag foundations under the unified
+exact query semantics described below.
 
 
 ## Compilation
@@ -19,10 +20,10 @@ needed; no generated Rocq makefile is version-controlled.
 
 ## Exact declarative PostgreSQL query extensions
 
-The Logos fork contains an exact ordered row-list query semantics whose
-`QExpr_Bag` constructor embeds the existing deterministic bag algebra for
-order-insensitive fragments. There is no second normalized query syntax or
-evaluator. Query meaning is independent of planner and executor choices.
+The Logos fork contains one exact ordered row-list query syntax and outcome
+semantics. Bag operators and possible bags are proof abstractions over that
+syntax rather than a second embedded query language or evaluator. Query
+meaning is independent of planner and executor choices.
 Logical filtering, joins, grouping, grouping sets,
 order-preserving deterministic row mapping, duplicate elimination, ordering,
 offset, and fetch are compositional at every nesting depth. Rank and cumulative
@@ -38,6 +39,13 @@ division. `avg_numeric_scale_2` serves every schema-authoritative
 does not alter the transition. It retains exact nonnegative counters and an
 exact fixed-scale coefficient sum, with numeric range/division errors delayed
 until aggregate finalization.
+
+`src/data/proof_of_concept/SchemaConstraints.v` defines the concrete
+PostgreSQL integrity contract for stored database states. It covers typing,
+`NOT NULL`, primary and unique keys, `MATCH SIMPLE` foreign keys, three-valued
+`CHECK` constraints, and the supported partial or expression unique indexes.
+Frontends may transport and instantiate these declarations, but their meaning
+and the database-conformance relation are owned by FormalSQL.
 
 `src/data/sql/SqlQueryWellFormed.v` states the conservative schema, ordering,
 join-projection, and positional-IN obligations directly on the exact query

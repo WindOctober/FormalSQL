@@ -387,6 +387,26 @@ Definition timestamp_is_infinity_bool (timestamp : Z) : bool :=
 Definition timestamp_value_valid_bool (timestamp : Z) : bool :=
   timestamp_in_range_bool timestamp || timestamp_is_infinity_bool timestamp.
 
+(** PostgreSQL stores finite TIMESTAMP/TIMESTAMPTZ values in microseconds and
+    applies the declared precision when a value enters a typed column.  A
+    precision [p] therefore admits exactly multiples of [10^(6-p)]
+    microseconds.  The two infinity sentinels are independent of precision.
+
+    Keeping this check in the value model is important for quantified database
+    states: otherwise a schema such as [timestamp(0)] would admit an abstract
+    half-second value that no PostgreSQL instance of that schema can contain. *)
+Definition timestamp_precision_valid_bool (precision : Z) : bool :=
+  (0 <=? precision) && (precision <=? 6).
+
+Definition timestamp_fits_precision_bool
+    (timestamp precision : Z) : bool :=
+  if timestamp_precision_valid_bool precision then
+    if timestamp_is_infinity_bool timestamp then true
+    else
+      timestamp_in_range_bool timestamp
+      && (timestamp mod (Z.pow 10 (6 - precision)) =? 0)
+  else false.
+
 Definition timestamp_checked (timestamp : Z) : option Z :=
   if timestamp_in_range_bool timestamp then Some timestamp else None.
 

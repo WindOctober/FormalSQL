@@ -95,12 +95,14 @@ destruct s as [ | s].
   + apply Oeset.compare_eq_refl.
   + subst.
     simpl in H2; destruct H2 as [Hsa [Hg Hx]].
-    rewrite compare_list_t in Hx; unfold compare_OLA in Hx.
+    unfold env_rows_equiv in Hx.
+    assert (Hperm := Oeset.permut_refl_alt (OTuple T) x1 x2 Hx).
+    rewrite compare_list_t in Hperm; unfold compare_OLA in Hperm.
     destruct (quicksort (OTuple T) x1) as [ | u1 l1]; 
-      destruct (quicksort (OTuple T) x2) as [ | u2 l2]; try discriminate Hx;
-    [apply Oeset.compare_eq_refl | simpl in Hx].
+      destruct (quicksort (OTuple T) x2) as [ | u2 l2]; try discriminate Hperm;
+    [apply Oeset.compare_eq_refl | simpl in Hperm].
     case_eq (Oeset.compare (OTuple T) u1 u2); 
-            intro Hu; rewrite Hu in Hx; try discriminate Hx; trivial.
+            intro Hu; rewrite Hu in Hperm; try discriminate Hperm; trivial.
 - apply mk_tuple_eq_2.
   intros a Ha.
   case_eq (Oset.find (OAtt T) a s); [ | intros; apply refl_equal].

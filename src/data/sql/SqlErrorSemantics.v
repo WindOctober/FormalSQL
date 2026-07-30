@@ -2,7 +2,7 @@
 (**                                                                                 *)
 (**                          The SQLFormalSemantics Library                         *)
 (**                                                                                 *)
-(**                   Error-aware observation of SQL algebra                       *)
+(**                  Reusable SQL expression runtime-error checks                  *)
 (**                                                                                 *)
 (************************************************************************************)
 
@@ -11,13 +11,11 @@ Set Implicit Arguments.
 From Stdlib Require Import List.
 
 Require Import FiniteSet FiniteBag FiniteCollection FlatData Env Bool3 Formula
-        FTerms ATerms Projection SqlAlgebra SqlOutcome.
+        FTerms ATerms Projection SqlOutcome.
 
 Section Sec.
 
 Hypothesis T : Tuple.Rcd.
-Hypothesis relname : Type.
-
 Import Tuple.
 
 Local Definition value := value T.
@@ -26,15 +24,6 @@ Local Definition scalar_operator := scalar_operator T.
 Local Definition aggregate := aggregate T.
 Local Definition funterm := @funterm T.
 Local Definition aggterm := @aggterm T.
-Local Definition formula := @sql_formula T (@query T relname).
-Local Definition BTupleT := Fecol.CBag (CTuple T).
-Local Definition bagT := Febag.bag BTupleT.
-
-Hypothesis basesort : relname -> Fset.set (Tuple.A T).
-Hypothesis instance : relname -> bagT.
-Hypothesis unknown : Bool.b (B T).
-Hypothesis contains_nulls : tuple -> bool.
-
 (**
   An observation retains both the recursively detected failure and the value
   produced by the underlying total interpreter.  Keeping both lets a concrete
@@ -169,8 +158,9 @@ Definition eval_select_list_aggregate_runtime_error
     callbacks, so a lazy CASE cannot hide an aggregate transition or final
     error.  Relational subqueries are deliberately opaque here: their
     aggregates belong to, and are checked by, their own query evaluation. *)
-Fixpoint eval_formula_aggregate_runtime_error
-    (env : Env.env T) (sql_formula : formula) : option sql_runtime_error :=
+Fixpoint eval_formula_aggregate_runtime_error {Q : Type}
+    (env : Env.env T) (sql_formula : @sql_formula T Q)
+    : option sql_runtime_error :=
   match sql_formula with
   | @Sql_Conj _ _ _ left_formula right_formula =>
       first_error
@@ -186,10 +176,10 @@ Fixpoint eval_formula_aggregate_runtime_error
   | @Sql_Exists _ _ _ => None
   end.
 
-Fixpoint eval_formula_runtime_error
-    (eval_query_error : Env.env T -> @query T relname -> option sql_runtime_error)
+Fixpoint eval_formula_runtime_error {Q : Type}
+    (eval_query_error : Env.env T -> Q -> option sql_runtime_error)
     (env : Env.env T)
-    (sql_formula : formula) : option sql_runtime_error :=
+    (sql_formula : @sql_formula T Q) : option sql_runtime_error :=
   match sql_formula with
   | @Sql_Conj _ _ _ left_formula right_formula =>
       first_error
@@ -208,74 +198,6 @@ Fixpoint eval_formula_runtime_error
         (first_runtime_error (eval_select_runtime_error env) items)
         (eval_query_error env subquery)
   | @Sql_Exists _ _ subquery => eval_query_error env subquery
-  end.
-
-Fixpoint eval_query_runtime_error
-    (env : Env.env T)
-    (sql_query : @query T relname) : option sql_runtime_error :=
-  match sql_query with
-  | @Q_Empty_Tuple _ _ | @Q_Empty_Relation _ _ _ | @Q_Table _ _ _ => None
-  | @Q_Set _ _ _ left_query right_query
-  | @Q_CrossJoin _ _ left_query right_query =>
-      first_error
-        (eval_query_runtime_error env left_query)
-        (eval_query_runtime_error env right_query)
-  | @Q_Pi _ _ select_list input =>
-      first_error
-        (eval_query_runtime_error env input)
-        (first_runtime_error
-          (fun row =>
-            eval_select_list_runtime_error (env_t T env row) select_list)
-          (Febag.elements BTupleT
-            (@eval_query T relname basesort instance unknown contains_nulls env input)))
-  | @Q_Sigma _ _ predicate input =>
-      first_error
-        (eval_query_runtime_error env input)
-        (first_runtime_error
-          (fun row =>
-            eval_formula_runtime_error eval_query_runtime_error
-              (env_t T env row) predicate)
-          (Febag.elements BTupleT
-            (@eval_query T relname basesort instance unknown contains_nulls env input)))
-  | @Q_Gamma _ _ select_list group_terms having input =>
-      let input_bag :=
-        @eval_query T relname basesort instance unknown contains_nulls env input in
-      let input_rows := Febag.elements BTupleT input_bag in
-      let groups := @make_groups T env input_rows (@Group_By T group_terms) in
-      first_error
-        (eval_query_runtime_error env input)
-        (first_error
-          (first_runtime_error
-            (fun row => first_runtime_error
-              (eval_aggterm_runtime_error (env_t T env row)) group_terms)
-            input_rows)
-          (first_runtime_error
-            (fun group =>
-              let group_env := env_g T env (@Group_By T group_terms) group in
-              first_error
-                (eval_select_list_aggregate_runtime_error group_env select_list)
-                (first_error
-                  (eval_formula_aggregate_runtime_error group_env having)
-                  (first_error
-                    (eval_formula_runtime_error eval_query_runtime_error group_env having)
-                    (if Bool.is_true (B T)
-                          (@eval_sql_formula T (@query T relname)
-                            unknown contains_nulls
-                            (@eval_query T relname basesort instance unknown contains_nulls)
-                            group_env having)
-                     then eval_select_list_runtime_error group_env select_list
-                     else None))))
-            groups))
-  end.
-
-Definition eval_query_outcome
-    (env : Env.env T)
-    (sql_query : @query T relname) : sql_outcome bagT :=
-  match eval_query_runtime_error env sql_query with
-  | Some error => SqlError error
-  | None =>
-      SqlSuccess
-        (@eval_query T relname basesort instance unknown contains_nulls env sql_query)
   end.
 
 End Sec.

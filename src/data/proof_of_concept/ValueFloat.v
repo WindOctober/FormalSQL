@@ -69,7 +69,10 @@ Parameter float32_zero : float32.
 Parameter float32_of_Z : Z -> float32.
 Parameter float32_max : float32 -> float32 -> float32.
 Parameter float32_min : float32 -> float32 -> float32.
-
+Parameter float32_add_order_sensitive :
+  exists first second third,
+    float32_add (float32_add (float32_add float32_zero first) second) third <>
+    float32_add (float32_add (float32_add float32_zero first) third) second.
 Parameter float64_add : float64 -> float64 -> float64.
 Parameter float64_sub : float64 -> float64 -> float64.
 Parameter float64_mul : float64 -> float64 -> float64.
@@ -77,8 +80,53 @@ Parameter float64_div : float64 -> float64 -> float64.
 Parameter float64_opp : float64 -> float64.
 Parameter float64_zero : float64.
 Parameter float64_of_Z : Z -> float64.
+Parameter float32_to_float64 : float32 -> float64.
 Parameter float64_max : float64 -> float64 -> float64.
 Parameter float64_min : float64 -> float64 -> float64.
+Parameter float32_average_order_sensitive :
+  exists first second third,
+    float64_div
+      (float64_add
+        (float64_add
+          (float64_add float64_zero (float32_to_float64 first))
+          (float32_to_float64 second))
+        (float32_to_float64 third))
+      (float64_add
+        (float64_add
+          (float64_add float64_zero (float64_of_Z 1))
+          (float64_of_Z 1))
+        (float64_of_Z 1)) <>
+    float64_div
+      (float64_add
+        (float64_add
+          (float64_add float64_zero (float32_to_float64 first))
+          (float32_to_float64 third))
+        (float32_to_float64 second))
+      (float64_add
+        (float64_add
+          (float64_add float64_zero (float64_of_Z 1))
+          (float64_of_Z 1))
+        (float64_of_Z 1)).
+Parameter float64_add_order_sensitive :
+  exists first second third,
+    float64_add (float64_add (float64_add float64_zero first) second) third <>
+    float64_add (float64_add (float64_add float64_zero first) third) second.
+Parameter float64_average_order_sensitive :
+  exists first second third,
+    float64_div
+      (float64_add (float64_add (float64_add float64_zero first) second) third)
+      (float64_add
+        (float64_add
+          (float64_add float64_zero (float64_of_Z 1))
+          (float64_of_Z 1))
+        (float64_of_Z 1)) <>
+    float64_div
+      (float64_add (float64_add (float64_add float64_zero first) third) second)
+      (float64_add
+        (float64_add
+          (float64_add float64_zero (float64_of_Z 1))
+          (float64_of_Z 1))
+        (float64_of_Z 1)).
 
 End SQL_FLOAT.
 
@@ -369,6 +417,17 @@ Definition float32_of_Z z :=
 Definition float32_max f1 f2 := if float32_ltb f1 f2 then f2 else f1.
 Definition float32_min f1 f2 := if float32_ltb f1 f2 then f1 else f2.
 
+Lemma float32_add_order_sensitive :
+  exists first second third,
+    float32_add (float32_add (float32_add float32_zero first) second) third <>
+    float32_add (float32_add (float32_add float32_zero first) third) second.
+Proof.
+exists (mk_float32 (b32_of_bits 1266679808)).
+exists (mk_float32 (b32_of_bits 1065353216)).
+exists (mk_float32 (b32_of_bits 3414163456)).
+vm_compute; discriminate.
+Qed.
+
 Definition float64_add := lift_float64_binary (b64_plus mode_NE).
 Definition float64_sub := lift_float64_binary (b64_minus mode_NE).
 Definition float64_mul := lift_float64_binary (b64_mult mode_NE).
@@ -383,8 +442,93 @@ Definition float64_of_Z z :=
   mk_float64
     (Binary.binary_normalize 53 1024 float64_prec_gt_0 float64_prec_lt_emax
       mode_NE z 0 false).
+
+(** PostgreSQL's [float4_accum] widens each REAL input exactly to float8
+    before updating AVG's transition state.  Every finite binary32 value is
+    exactly representable as binary64; normalization below performs that
+    format conversion while preserving infinities and canonicalizing NaNs. *)
+Definition float32_to_float64 (f : float32) : float64 :=
+  match raw_float32_of f with
+  | @Binary.B754_zero _ _ sign =>
+      mk_float64 (@Binary.B754_zero 53 1024 sign)
+  | @Binary.B754_infinity _ _ sign =>
+      mk_float64 (@Binary.B754_infinity 53 1024 sign)
+  | @Binary.B754_nan _ _ _ _ _ => Float64NaN
+  | @Binary.B754_finite _ _ sign mantissa exponent _ =>
+      mk_float64
+        (Binary.binary_normalize 53 1024
+          float64_prec_gt_0 float64_prec_lt_emax mode_NE
+          (if sign then Z.neg mantissa else Z.pos mantissa)
+          exponent sign)
+  end.
+
 Definition float64_max f1 f2 := if float64_ltb f1 f2 then f2 else f1.
 Definition float64_min f1 f2 := if float64_ltb f1 f2 then f1 else f2.
+
+Lemma float32_average_order_sensitive :
+  exists first second third,
+    float64_div
+      (float64_add
+        (float64_add
+          (float64_add float64_zero (float32_to_float64 first))
+          (float32_to_float64 second))
+        (float32_to_float64 third))
+      (float64_add
+        (float64_add
+          (float64_add float64_zero (float64_of_Z 1))
+          (float64_of_Z 1))
+        (float64_of_Z 1)) <>
+    float64_div
+      (float64_add
+        (float64_add
+          (float64_add float64_zero (float32_to_float64 first))
+          (float32_to_float64 third))
+        (float32_to_float64 second))
+      (float64_add
+        (float64_add
+          (float64_add float64_zero (float64_of_Z 1))
+          (float64_of_Z 1))
+        (float64_of_Z 1)).
+Proof.
+exists (mk_float32 (b32_of_bits 1904214016)).
+exists (mk_float32 (b32_of_bits 1065353216)).
+exists (mk_float32 (b32_of_bits 4051697664)).
+vm_compute; discriminate.
+Qed.
+
+Lemma float64_add_order_sensitive :
+  exists first second third,
+    float64_add (float64_add (float64_add float64_zero first) second) third <>
+    float64_add (float64_add (float64_add float64_zero first) third) second.
+Proof.
+exists (mk_float64 (b64_of_bits 4845873199050653696)).
+exists (mk_float64 (b64_of_bits 4607182418800017408)).
+exists (mk_float64 (b64_of_bits 14069245235905429504)).
+vm_compute; discriminate.
+Qed.
+
+Lemma float64_average_order_sensitive :
+  exists first second third,
+    float64_div
+      (float64_add (float64_add (float64_add float64_zero first) second) third)
+      (float64_add
+        (float64_add
+          (float64_add float64_zero (float64_of_Z 1))
+          (float64_of_Z 1))
+        (float64_of_Z 1)) <>
+    float64_div
+      (float64_add (float64_add (float64_add float64_zero first) third) second)
+      (float64_add
+        (float64_add
+          (float64_add float64_zero (float64_of_Z 1))
+          (float64_of_Z 1))
+        (float64_of_Z 1)).
+Proof.
+exists (mk_float64 (b64_of_bits 4845873199050653696)).
+exists (mk_float64 (b64_of_bits 4607182418800017408)).
+exists (mk_float64 (b64_of_bits 14069245235905429504)).
+vm_compute; discriminate.
+Qed.
 
 End SqlFloat.
 

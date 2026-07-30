@@ -164,13 +164,18 @@ Definition utf8_second_byte_valid
   else if Nat.eqb first 244 then byte_in_range 128 143 second
   else byte_in_range 128 191 second.
 
-(** Split one well-formed UTF-8 code point from a Rocq byte string. *)
+(** Split one PostgreSQL-text UTF-8 code point from a Rocq byte string.
+    U+0000 is valid Unicode but PostgreSQL's text-like varlena types reject a
+    zero byte, so it must not enter a quantified table value or a successful
+    text coercion. *)
 Definition utf8_split_first (value : string) : option (string * string) :=
   match value with
   | EmptyString => None
   | String first rest =>
       let first_byte := nat_of_ascii first in
-      if Nat.leb first_byte 127
+      if Nat.eqb first_byte 0
+      then None
+      else if Nat.leb first_byte 127
       then Some (String first EmptyString, rest)
       else if byte_in_range 194 223 first_byte
       then

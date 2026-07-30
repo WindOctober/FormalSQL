@@ -488,36 +488,12 @@ revert e Hn; induction n as [ | n];
 destruct e as [f | a f | f la].
 - rewrite !interp_aggterm_unfold; apply interp_funterm_eq_env_g_strong; trivial.
 - case_eq (Fset.is_empty (A T) (variables_ft T f)); intro Hf.
-  + rewrite !interp_aggterm_unfold; rewrite Hf; unfold unfold_env_slice; rewrite ! map_map.
-    apply Haggregate.
-    * apply Oset.permut_trans with 
-          (map (fun x => interp_funterm ((s, Group_Fine, x :: nil) :: env) f) l).
-      -- apply _permut_map with (fun x y => Oeset.compare (OTuple T) x y = Eq).
-         ++ intros; subst; rewrite Oset.compare_eq_iff; apply interp_funterm_eq.
-            constructor 2; [ | apply equiv_env_refl].
-            simpl; repeat split; [apply Fset.equal_refl | ].
-            rewrite compare_list_t; unfold compare_OLA; simpl.
-            rewrite H1; apply refl_equal.
-         ++ apply Oeset.permut_sym; apply quick_permut.
-      -- apply Oset.permut_trans with
-             (map
-                (fun x =>
-                   interp_funterm
-                     ((s unionS Fset.mk_set (A T) lb, Group_Fine, x :: nil) :: env) f)
-                (map (fun x => 
-                        projection (env_t env x) 
-                                   (Select_List (_Select_List (id_renaming s ++ s')))) l)).
-         ++ rewrite map_map; apply Oset.permut_refl_alt2; rewrite <- map_eq.
-            intros t Ht; apply interp_dot_eq_interp_funterm_eq.
-            intros b Hb; rewrite Fset.is_empty_spec, Fset.equal_spec in Hf.
-            rewrite Hf, Fset.empty_spec in Hb; discriminate Hb.
-         ++ apply _permut_map with (fun x y => Oeset.compare (OTuple T) x y = Eq).
-            ** intros; subst; rewrite Oset.compare_eq_iff; apply interp_funterm_eq.
-               constructor 2; [ | apply equiv_env_refl].
-               simpl; repeat split; [apply Fset.equal_refl | ].
-               rewrite compare_list_t; unfold compare_OLA; simpl.
-               rewrite H1; apply refl_equal.
-            ** apply quick_permut.
+  + rewrite !interp_aggterm_unfold, Hf.
+    unfold unfold_env_slice; rewrite !map_map.
+    apply f_equal; rewrite <- map_eq; intros row Hrow.
+    transitivity (interp_funterm nil f).
+    * apply interp_cst_funterm; exact Hf.
+    * symmetry; apply interp_cst_funterm; exact Hf.
   + simpl in We; rewrite Hf, Bool.Bool.orb_false_l in We.
     case_eq (find_eval_env env (A_agg a f)); 
       [intros e Kf;
@@ -588,14 +564,7 @@ destruct e as [f | a f | f la].
          unfold unfold_env_slice; rewrite !map_map; apply Haggregate.
          apply Oset.permut_trans with 
           (map (fun x => interp_funterm ((s, Group_Fine, x :: nil) :: env) f) l).
-         ++ apply _permut_map with (fun x y => Oeset.compare (OTuple T) x y = Eq).
-            ** intros t1 t2 Ht1 Ht2 Ht; subst; 
-                 rewrite Oset.compare_eq_iff; apply interp_funterm_eq.
-               constructor 2; [ | apply equiv_env_refl].
-               simpl; repeat split; [apply Fset.equal_refl | ].
-               rewrite compare_list_t; unfold compare_OLA; simpl.
-               rewrite Ht; apply refl_equal.
-            ** apply Oeset.permut_sym; apply quick_permut.
+         ++ apply Oset.permut_refl.
          ++ apply Oset.permut_trans with
              (map
                 (fun x =>
@@ -621,23 +590,42 @@ destruct e as [f | a f | f la].
                --- unfold env_t; apply interp_funterm_eq; constructor 2; [ | apply equiv_env_refl].
                    simpl; rewrite (Fset.equal_eq_2 _ _ _ _ (labels_mk_tuple _ _ _)).
                    split; [apply Fset.equal_refl | split; [apply refl_equal | ]].
-                   refine (Pcons (R := fun x y => Oeset.compare (OTuple T) x y = Eq)
-                                 _ _ nil nil _ (Oeset.permut_refl _ _)); rewrite tuple_eq.
-                   rewrite (Fset.equal_eq_2 _ _ _ _ (labels_mk_tuple _ _ _));
-                     rewrite forallb_forall in W3; split; [apply W3; assumption | ].
-                   intros b Hb; rewrite dot_mk_tuple, <- (Fset.mem_eq_2 _ _ _ (W3 _ Ht)), Hb.
-                   unfold projection, id_renaming, select_list_sort,
-                     select_list_outputs;
-                     rewrite !map_app, !map_map, dot_mk_tuple.
-                   rewrite Fset.mem_mk_set_app, map_id, 
-                     (Fset.mem_eq_2 _ _ _ (Fset.mk_set_idem _ _));
-                     [ | intros; trivial].
-                   rewrite <- (Fset.mem_eq_2 _ _ _ (W3 _ Ht)), Hb, Bool.Bool.orb_true_l.
-                   unfold pair_of_select.
-                   rewrite Oset.find_app, Oset.find_map; simpl.
-                   +++ rewrite Hb; apply refl_equal.
-                   +++ apply Fset.mem_in_elements; rewrite <- (Fset.mem_eq_2 _ _ _ (W3 _ Ht)), Hb.
-                       apply refl_equal.
+                   unfold env_rows_equiv; simpl.
+                   assert (Htuple : Oeset.compare (OTuple T) t
+                     (mk_tuple T s
+                       (dot T
+                         (projection (env_t env t)
+                           (Select_List (_Select_List (id_renaming s ++ s')))))) = Eq).
+                   {
+                     rewrite tuple_eq.
+                     rewrite (Fset.equal_eq_2 _ _ _ _ (labels_mk_tuple _ _ _));
+                       rewrite forallb_forall in W3; split; [apply W3; assumption | ].
+                     intros b Hb; rewrite dot_mk_tuple, <- (Fset.mem_eq_2 _ _ _ (W3 _ Ht)), Hb.
+                     unfold projection, id_renaming, select_list_sort,
+                       select_list_outputs;
+                       rewrite !map_app, !map_map, dot_mk_tuple.
+                     rewrite Fset.mem_mk_set_app, map_id,
+                       (Fset.mem_eq_2 _ _ _ (Fset.mk_set_idem _ _));
+                       [ | intros; trivial].
+                     rewrite <- (Fset.mem_eq_2 _ _ _ (W3 _ Ht)), Hb,
+                       Bool.Bool.orb_true_l.
+                     unfold pairs_of_selects, pair_of_select; simpl.
+                     rewrite map_app, map_map, Oset.find_app, Oset.find_map; simpl.
+                     +++ rewrite Hb; reflexivity.
+                     +++ apply Fset.mem_in_elements;
+                         rewrite <- (Fset.mem_eq_2 _ _ _ (W3 _ Ht)), Hb;
+                         reflexivity.
+                   }
+                   change
+                     (match Oeset.compare (OTuple T) t
+                       (mk_tuple T s
+                         (dot T
+                           (projection (env_t env t)
+                             (Select_List
+                               (_Select_List (id_renaming s ++ s')))))) with
+                      | Eq => Eq | Lt => Lt | Gt => Gt
+                      end = Eq).
+                   rewrite Htuple; reflexivity.
                --- simpl app; unfold env_t; rewrite well_formed_e_unfold, !Bool.Bool.andb_true_iff;
                    repeat split; trivial.
                    +++ rewrite forallb_forall; intros x [Hx | Hx]; [subst x | contradiction Hx].
@@ -692,19 +680,7 @@ destruct e as [f | a f | f la].
                        unfold env_slice in *; rewrite H8, Bool.Bool.orb_true_r; apply refl_equal.
                --- unfold env_t; rewrite app_nil.
                    apply (interp_funterm_homogeneous_nil _ _ _ _ _ _ _ _ _ _ (quicksort_1 _ _)).
-            ** apply _permut_map with (fun x y => Oeset.compare (OTuple T) x y = Eq).
-               --- intros t1 t2 Ht1 Ht2 Ht; rewrite Oset.compare_eq_iff.
-                   apply trans_eq with 
-                       (interp_funterm 
-                          ((s unionS Fset.mk_set (A T) lb, Group_Fine, t2 :: nil) :: env) f).
-                   +++ apply interp_funterm_eq.
-                       constructor 2; [ | apply equiv_env_refl].
-                       simpl; repeat split; [apply Fset.equal_refl | ].
-                       rewrite compare_list_t; unfold compare_OLA; simpl.
-                       rewrite Ht; apply refl_equal.
-                   +++ apply (interp_funterm_homogeneous_nil
-                                _ _ _ _ _ _ _ _ _ _ (quicksort_1 _ _)).
-               --- apply quick_permut.
+            ** rewrite map_map; apply Oset.permut_refl.
 - simpl; apply f_equal; rewrite <- map_eq; intros x Hx.
   apply IHn; trivial.
   + simpl in Hn; refine (le_trans _ _ _ _ (le_S_n _ _ Hn)).

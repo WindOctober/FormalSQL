@@ -152,6 +152,8 @@ Inductive scalar_cast : Type :=
   | ScalarCastInt32ToInt64
   | ScalarCastInt64ToInt32
   | ScalarCastNumericToInt32
+  | ScalarCastStringToInt32
+  | ScalarCastStringToInt64
   | ScalarCastDateToTimestamp
   | ScalarCastTimestampToDate
   | ScalarCastStringExplicit
@@ -251,6 +253,8 @@ Inductive aggregate_function : Type :=
   | AggregateStddevPopulationInt32
   | AggregateStddevSampleInt32
   | AggregateStddevSampleNumericFixed : Z -> Z -> aggregate_function
+  (** The suffix identifies the input type.  PostgreSQL AVG(REAL) widens its
+      transition state and result to DOUBLE PRECISION. *)
   | AggregateAverageFloat
   | AggregateAverageDouble
   | AggregateAverageNumericFixed : Z -> Z -> aggregate_function

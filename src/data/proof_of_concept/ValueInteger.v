@@ -313,6 +313,114 @@ Proof. reflexivity. Qed.
 Definition int32_compare x y := Oset.compare OZ (int32_value x) (int32_value y).
 Definition int64_compare x y := Oset.compare OZ (int64_value x) (int64_value y).
 
+Definition int32_minimum (left right : int32) : int32 :=
+  if int32_value left <=? int32_value right then left else right.
+
+Definition int32_maximum (left right : int32) : int32 :=
+  if int32_value right <=? int32_value left then left else right.
+
+Definition int64_minimum (left right : int64) : int64 :=
+  if int64_value left <=? int64_value right then left else right.
+
+Definition int64_maximum (left right : int64) : int64 :=
+  if int64_value right <=? int64_value left then left else right.
+
+Lemma int32_minimum_value : forall left right,
+  int32_value (int32_minimum left right) =
+    Z.min (int32_value left) (int32_value right).
+Proof.
+  intros left right; unfold int32_minimum.
+  destruct (Z.leb_spec0 (int32_value left) (int32_value right));
+    [now rewrite Z.min_l | now rewrite Z.min_r by lia].
+Qed.
+
+Lemma int32_maximum_value : forall left right,
+  int32_value (int32_maximum left right) =
+    Z.max (int32_value left) (int32_value right).
+Proof.
+  intros left right; unfold int32_maximum.
+  destruct (Z.leb_spec0 (int32_value right) (int32_value left));
+    [now rewrite Z.max_l | now rewrite Z.max_r by lia].
+Qed.
+
+Lemma int64_minimum_value : forall left right,
+  int64_value (int64_minimum left right) =
+    Z.min (int64_value left) (int64_value right).
+Proof.
+  intros left right; unfold int64_minimum.
+  destruct (Z.leb_spec0 (int64_value left) (int64_value right));
+    [now rewrite Z.min_l | now rewrite Z.min_r by lia].
+Qed.
+
+Lemma int64_maximum_value : forall left right,
+  int64_value (int64_maximum left right) =
+    Z.max (int64_value left) (int64_value right).
+Proof.
+  intros left right; unfold int64_maximum.
+  destruct (Z.leb_spec0 (int64_value right) (int64_value left));
+    [now rewrite Z.max_l | now rewrite Z.max_r by lia].
+Qed.
+
+Lemma int32_minimum_commutative : forall left right,
+  int32_minimum left right = int32_minimum right left.
+Proof.
+  intros left right; apply int32_ext.
+  rewrite !int32_minimum_value, Z.min_comm; reflexivity.
+Qed.
+
+Lemma int32_maximum_commutative : forall left right,
+  int32_maximum left right = int32_maximum right left.
+Proof.
+  intros left right; apply int32_ext.
+  rewrite !int32_maximum_value, Z.max_comm; reflexivity.
+Qed.
+
+Lemma int64_minimum_commutative : forall left right,
+  int64_minimum left right = int64_minimum right left.
+Proof.
+  intros left right; apply int64_ext.
+  rewrite !int64_minimum_value, Z.min_comm; reflexivity.
+Qed.
+
+Lemma int64_maximum_commutative : forall left right,
+  int64_maximum left right = int64_maximum right left.
+Proof.
+  intros left right; apply int64_ext.
+  rewrite !int64_maximum_value, Z.max_comm; reflexivity.
+Qed.
+
+Lemma int32_minimum_associative : forall first second third,
+  int32_minimum (int32_minimum first second) third =
+    int32_minimum first (int32_minimum second third).
+Proof.
+  intros first second third; apply int32_ext.
+  rewrite !int32_minimum_value, Z.min_assoc; reflexivity.
+Qed.
+
+Lemma int32_maximum_associative : forall first second third,
+  int32_maximum (int32_maximum first second) third =
+    int32_maximum first (int32_maximum second third).
+Proof.
+  intros first second third; apply int32_ext.
+  rewrite !int32_maximum_value, Z.max_assoc; reflexivity.
+Qed.
+
+Lemma int64_minimum_associative : forall first second third,
+  int64_minimum (int64_minimum first second) third =
+    int64_minimum first (int64_minimum second third).
+Proof.
+  intros first second third; apply int64_ext.
+  rewrite !int64_minimum_value, Z.min_assoc; reflexivity.
+Qed.
+
+Lemma int64_maximum_associative : forall first second third,
+  int64_maximum (int64_maximum first second) third =
+    int64_maximum first (int64_maximum second third).
+Proof.
+  intros first second third; apply int64_ext.
+  rewrite !int64_maximum_value, Z.max_assoc; reflexivity.
+Qed.
+
 Definition Oint32 : Oset.Rcd int32.
 Proof.
   split with int32_compare.
