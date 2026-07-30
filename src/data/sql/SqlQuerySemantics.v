@@ -836,7 +836,6 @@ Definition query_exists_requires_rows
   | QExpr_RowMap _ _ _
   | QExpr_Filter _ _
   | QExpr_ScalarFilter _ _
-  | QExpr_Set Union _ _
   | QExpr_Join _ _ _ _ _ _ _
   | QExpr_Group _ _ _ _
   | QExpr_ScalarGroup _ _ _ _
@@ -850,6 +849,7 @@ Definition query_exists_requires_rows
 Definition query_exists_uses_cardinality
     (query : query_expr T relname) : bool :=
   match query with
+  | QExpr_Join _ _ _ _ _ _ _
   | QExpr_Group _ _ _ _
   | QExpr_ScalarGroup _ _ _ _
   | QExpr_GroupingSets _ _ => true
@@ -892,23 +892,6 @@ Definition scalar_conj_short_result
   match operation with
   | And_F => Bool.false (B T)
   | Or_F => Bool.true (B T)
-  end.
-
-(** Native inner/semi/anti EXISTS scans use the same ON predicate but differ
-    in which row-level match decision emits an output row.  Outer joins are
-    handled directly by their cardinality laws and never enter this scanner. *)
-Definition query_join_exists_scans_predicate (kind : query_join_kind) : bool :=
-  match kind with
-  | QueryJoinInner | QueryJoinSemi | QueryJoinAnti => true
-  | QueryJoinLeft | QueryJoinRight | QueryJoinFull => false
-  end.
-
-Definition query_join_exists_row_produces
-    (kind : query_join_kind) (matched : bool) : bool :=
-  match kind with
-  | QueryJoinInner | QueryJoinSemi => matched
-  | QueryJoinAnti => negb matched
-  | QueryJoinLeft | QueryJoinRight | QueryJoinFull => false
   end.
 
 (**
@@ -1729,93 +1712,6 @@ with eval_query_exists_outcome
         eval_query_cardinality_outcome env query outcome ->
         eval_query_exists_outcome env query
           (query_exists_cardinality_outcome outcome)
-  | EExists_SetUnionLeftError :
-      forall left right error,
-        eval_query_exists_outcome env left (SqlError error) ->
-        eval_query_exists_outcome env (QExpr_Set Union left right)
-          (SqlError error)
-  | EExists_SetUnionLeftTrue :
-      forall left right truth,
-        eval_query_exists_outcome env left (SqlSuccess truth) ->
-        Bool.is_true (B T) truth = true ->
-        eval_query_exists_outcome env (QExpr_Set Union left right)
-          (SqlSuccess (Bool.true (B T)))
-  | EExists_SetUnionLeftFalse :
-      forall left right truth outcome,
-        eval_query_exists_outcome env left (SqlSuccess truth) ->
-        Bool.is_true (B T) truth = false ->
-        eval_query_exists_outcome env right outcome ->
-        eval_query_exists_outcome env (QExpr_Set Union left right) outcome
-  | EExists_SetUnionRightError :
-      forall left right error,
-        eval_query_exists_outcome env right (SqlError error) ->
-        eval_query_exists_outcome env (QExpr_Set Union left right)
-          (SqlError error)
-  | EExists_SetUnionRightTrue :
-      forall left right truth,
-        eval_query_exists_outcome env right (SqlSuccess truth) ->
-        Bool.is_true (B T) truth = true ->
-        eval_query_exists_outcome env (QExpr_Set Union left right)
-          (SqlSuccess (Bool.true (B T)))
-  | EExists_SetUnionRightFalse :
-      forall left right truth outcome,
-        eval_query_exists_outcome env right (SqlSuccess truth) ->
-        Bool.is_true (B T) truth = false ->
-        eval_query_exists_outcome env left outcome ->
-        eval_query_exists_outcome env (QExpr_Set Union left right) outcome
-  | EExists_JoinLeftChildError :
-      forall kind predicate matched_select left_select right_select
-             left right error,
-        eval_query_expr_outcome env left (SqlError error) ->
-        eval_query_exists_outcome env
-          (QExpr_Join kind predicate matched_select left_select right_select
-            left right) (SqlError error)
-  | EExists_JoinRightChildError :
-      forall kind predicate matched_select left_select right_select
-             left right left_rows error,
-        eval_query_expr_outcome env left (SqlSuccess left_rows) ->
-        eval_query_expr_outcome env right (SqlError error) ->
-        eval_query_exists_outcome env
-          (QExpr_Join kind predicate matched_select left_select right_select
-            left right) (SqlError error)
-  | EExists_JoinScan :
-      forall kind predicate matched_select left_select right_select
-             left right left_rows right_rows outcome,
-        query_join_exists_scans_predicate kind = true ->
-        eval_query_expr_outcome env left (SqlSuccess left_rows) ->
-        eval_query_expr_outcome env right (SqlSuccess right_rows) ->
-        eval_join_exists_outcome env kind predicate left_rows right_rows outcome ->
-        eval_query_exists_outcome env
-          (QExpr_Join kind predicate matched_select left_select right_select
-            left right) outcome
-  | EExists_JoinLeftSuccess :
-      forall predicate matched_select left_select right_select
-             left right left_rows right_rows,
-        eval_query_expr_outcome env left (SqlSuccess left_rows) ->
-        eval_query_expr_outcome env right (SqlSuccess right_rows) ->
-        eval_query_exists_outcome env
-          (QExpr_Join QueryJoinLeft predicate matched_select left_select
-            right_select left right)
-          (SqlSuccess (query_exists_truth (length left_rows)))
-  | EExists_JoinRightSuccess :
-      forall predicate matched_select left_select right_select
-             left right left_rows right_rows,
-        eval_query_expr_outcome env left (SqlSuccess left_rows) ->
-        eval_query_expr_outcome env right (SqlSuccess right_rows) ->
-        eval_query_exists_outcome env
-          (QExpr_Join QueryJoinRight predicate matched_select left_select
-            right_select left right)
-          (SqlSuccess (query_exists_truth (length right_rows)))
-  | EExists_JoinFullSuccess :
-      forall predicate matched_select left_select right_select
-             left right left_rows right_rows,
-        eval_query_expr_outcome env left (SqlSuccess left_rows) ->
-        eval_query_expr_outcome env right (SqlSuccess right_rows) ->
-        eval_query_exists_outcome env
-          (QExpr_Join QueryJoinFull predicate matched_select left_select
-            right_select left right)
-          (SqlSuccess
-            (query_exists_truth (length left_rows + length right_rows)))
   | EExists_Project :
       forall select_list input outcome,
         eval_query_exists_outcome env input outcome ->
@@ -2549,79 +2445,7 @@ with eval_join_cardinality_outcome
           (SqlSuccess matrix) ->
         eval_join_cardinality_outcome env kind predicate left_bag right_bag
           (SqlSuccess
-            (length (query_join_sources kind left_rows right_rows matrix)))
-
-(** Capped row scan for one left row.  UNKNOWN is not a match, exactly as in
-    ON qualification; an error encountered before a match remains observable. *)
-with eval_join_row_exists_outcome
-    (env : Env.env T) :
-    formula_expr T relname -> tuple -> list tuple ->
-    sql_outcome bool -> Prop :=
-  | EJoinRowExists_Nil :
-      forall predicate left,
-        eval_join_row_exists_outcome env predicate left nil
-          (SqlSuccess false)
-  | EJoinRowExists_HeadError :
-      forall predicate left right rights error,
-        eval_formula_expr_outcome
-          (env_t T env (join_tuple T left right)) predicate
-          (SqlError error) ->
-        eval_join_row_exists_outcome env predicate left (right :: rights)
-          (SqlError error)
-  | EJoinRowExists_HeadMatch :
-      forall predicate left right rights truth,
-        eval_formula_expr_outcome
-          (env_t T env (join_tuple T left right)) predicate
-          (SqlSuccess truth) ->
-        Bool.is_true (B T) truth = true ->
-        eval_join_row_exists_outcome env predicate left (right :: rights)
-          (SqlSuccess true)
-  | EJoinRowExists_HeadNoMatch :
-      forall predicate left right rights truth outcome,
-        eval_formula_expr_outcome
-          (env_t T env (join_tuple T left right)) predicate
-          (SqlSuccess truth) ->
-        Bool.is_true (B T) truth = false ->
-        eval_join_row_exists_outcome env predicate left rights outcome ->
-        eval_join_row_exists_outcome env predicate left (right :: rights)
-          outcome
-
-(** Inner/semi joins emit a row on a match; anti joins emit one on the first
-    left row for which the complete right scan has no match.  The relation
-    stops once that fact establishes EXISTS and never evaluates later pairs. *)
-with eval_join_exists_outcome
-    (env : Env.env T) :
-    query_join_kind -> formula_expr T relname ->
-    list tuple -> list tuple -> sql_outcome (Bool.b (B T)) -> Prop :=
-  | EJoinExists_Nil :
-      forall kind predicate rights,
-        query_join_exists_scans_predicate kind = true ->
-        eval_join_exists_outcome env kind predicate nil rights
-          (SqlSuccess (Bool.false (B T)))
-  | EJoinExists_HeadError :
-      forall kind predicate left lefts rights error,
-        query_join_exists_scans_predicate kind = true ->
-        eval_join_row_exists_outcome env predicate left rights
-          (SqlError error) ->
-        eval_join_exists_outcome env kind predicate (left :: lefts) rights
-          (SqlError error)
-  | EJoinExists_HeadProduces :
-      forall kind predicate left lefts rights matched,
-        query_join_exists_scans_predicate kind = true ->
-        eval_join_row_exists_outcome env predicate left rights
-          (SqlSuccess matched) ->
-        query_join_exists_row_produces kind matched = true ->
-        eval_join_exists_outcome env kind predicate (left :: lefts) rights
-          (SqlSuccess (Bool.true (B T)))
-  | EJoinExists_HeadSkips :
-      forall kind predicate left lefts rights matched outcome,
-        query_join_exists_scans_predicate kind = true ->
-        eval_join_row_exists_outcome env predicate left rights
-          (SqlSuccess matched) ->
-        query_join_exists_row_produces kind matched = false ->
-        eval_join_exists_outcome env kind predicate lefts rights outcome ->
-        eval_join_exists_outcome env kind predicate (left :: lefts) rights
-          outcome.
+            (length (query_join_sources kind left_rows right_rows matrix))).
 
 (** Observation equivalence is success-only: both sides must have a success,
     neither may produce an error, and their legal successful lists are exactly
