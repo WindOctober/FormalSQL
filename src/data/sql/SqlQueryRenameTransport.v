@@ -51,15 +51,23 @@ Hypothesis aggregate_runtime_error :
   aggregate T -> list (option sql_runtime_error * value) ->
   option sql_runtime_error.
 Hypothesis value_is_null : value -> bool.
+Hypothesis boolean_schedule : boolean_site -> boolean_evaluation_order.
+Hypothesis leaf_has_type : type T -> @aggterm T -> Prop.
+Hypothesis call_has_type :
+  type T -> scalar_operator T -> list (type T) -> Prop.
+Hypothesis predicate_has_types : predicate T -> list (type T) -> Prop.
+Hypothesis rank_type boolean_type : type T.
 
 Local Abbreviation eval_query :=
   (@eval_query_expr_outcome T relname basesort instance unknown
-    symbol_runtime_error aggregate_runtime_error value_is_null).
-Local Abbreviation eval_formula :=
-  (@eval_formula_expr_outcome T relname basesort instance unknown
-    symbol_runtime_error aggregate_runtime_error value_is_null).
-Local Abbreviation eval_formula_aggregates :=
-  (@eval_formula_expr_aggregate_runtime_error T relname
+    symbol_runtime_error aggregate_runtime_error value_is_null
+    boolean_schedule).
+Local Abbreviation eval_scalar_boolean :=
+  (@eval_scalar_boolean_expr_outcome T relname basesort instance unknown
+    symbol_runtime_error aggregate_runtime_error value_is_null
+    boolean_schedule).
+Local Abbreviation eval_scalar_boolean_aggregates :=
+  (@eval_scalar_expr_aggregate_runtime_error T relname
     symbol_runtime_error aggregate_runtime_error).
 
 (** Exact order and multiplicity are retained, and the mapping reflects tuple
@@ -73,7 +81,7 @@ Definition query_rows_rename
   rows_rename_sound rho left right.
 
 (** Reachable scalar environments are paired explicitly.  These relations are
-    used by exact formula contracts below; they do not assume that evaluating a
+    used by exact expression contracts below; they do not assume that evaluating a
     renamed correlated subquery in the original outer environment is sound. *)
 Definition query_row_environment_rename
     (environment_relation : Env.env T -> Env.env T -> Prop)
@@ -140,27 +148,27 @@ Definition query_group_formation_rename_compatible
 
 (** Exact three-valued compatibility.  [outcome_relation_equiv eq] retains
     TRUE, FALSE, and UNKNOWN separately and compares every SQL error category;
-    quantified/correlated subqueries are included by [eval_formula]. *)
-Definition query_formula_outcome_rename_compatible
+    quantified/correlated subqueries are included by [eval_scalar_boolean]. *)
+Definition query_scalar_expr_outcome_rename_compatible
     (environment_relation : Env.env T -> Env.env T -> Prop)
-    (left right : formula_expr T relname) : Prop :=
+    (left right : scalar_expr T relname ScalarResultBoolean) : Prop :=
   forall left_env right_env,
     environment_relation left_env right_env ->
     outcome_relation_equiv eq
-      (eval_formula left_env left) (eval_formula right_env right).
+      (eval_scalar_boolean left_env left) (eval_scalar_boolean right_env right).
 
-Lemma query_formula_outcome_rename_compatible_success_iff :
+Lemma query_scalar_expr_outcome_rename_compatible_success_iff :
   forall environment_relation left right left_env right_env,
-    query_formula_outcome_rename_compatible
+    query_scalar_expr_outcome_rename_compatible
       environment_relation left right ->
     environment_relation left_env right_env ->
     forall truth,
-      (eval_formula left_env left (SqlSuccess truth) <->
-       eval_formula right_env right (SqlSuccess truth)).
+      (eval_scalar_boolean left_env left (SqlSuccess truth) <->
+       eval_scalar_boolean right_env right (SqlSuccess truth)).
 Proof.
 intros environment_relation left right left_env right_env
-  Hformula Henvironment truth.
-destruct (Hformula left_env right_env Henvironment)
+  Hexpression Henvironment truth.
+destruct (Hexpression left_env right_env Henvironment)
   as [_ [_ [Hforward [Hbackward _]]]].
 split; intro Heval.
 - destruct (Hforward truth Heval) as [right_truth [Hright Hequal]].
@@ -169,31 +177,31 @@ split; intro Heval.
   now subst left_truth.
 Qed.
 
-Lemma query_formula_outcome_rename_compatible_error_iff :
+Lemma query_scalar_expr_outcome_rename_compatible_error_iff :
   forall environment_relation left right left_env right_env,
-    query_formula_outcome_rename_compatible
+    query_scalar_expr_outcome_rename_compatible
       environment_relation left right ->
     environment_relation left_env right_env ->
     forall error,
-      (eval_formula left_env left (SqlError error) <->
-       eval_formula right_env right (SqlError error)).
+      (eval_scalar_boolean left_env left (SqlError error) <->
+       eval_scalar_boolean right_env right (SqlError error)).
 Proof.
 intros environment_relation left right left_env right_env
-  Hformula Henvironment error.
+  Hexpression Henvironment error.
 exact (proj2 (proj2 (proj2 (proj2
-  (Hformula left_env right_env Henvironment)))) error).
+  (Hexpression left_env right_env Henvironment)))) error).
 Qed.
 
 (** GROUP observes aggregate finalization before its lazy HAVING result, so the
     aggregate precheck must also agree exactly. *)
-Definition query_group_formula_outcome_rename_compatible
+Definition query_group_scalar_expr_outcome_rename_compatible
     (environment_relation : Env.env T -> Env.env T -> Prop)
-    (left right : formula_expr T relname) : Prop :=
-  query_formula_outcome_rename_compatible environment_relation left right /\
+    (left right : scalar_expr T relname ScalarResultBoolean) : Prop :=
+  query_scalar_expr_outcome_rename_compatible environment_relation left right /\
   forall left_env right_env,
     environment_relation left_env right_env ->
-    eval_formula_aggregates left_env left =
-    eval_formula_aggregates right_env right.
+    eval_scalar_boolean_aggregates left_env left =
+    eval_scalar_boolean_aggregates right_env right.
 
 (** A support-local injection is the collision side condition actually needed
     by tuple renaming.  Pair-list uniqueness alone is insufficient when a
@@ -222,8 +230,10 @@ Definition query_rename_schema_compatible
   map rho (query_expr_outputs left) = query_expr_outputs right /\
   query_attribute_rename_injective_on rho (query_expr_sort left) /\
   query_attribute_rename_type_preserving_on rho (query_expr_sort left) /\
-  @query_expr_admissible T relname basesort left /\
-  @query_expr_admissible T relname basesort right.
+  @query_expr_admissible T relname basesort leaf_has_type call_has_type
+    predicate_has_types rank_type boolean_type value_is_null left /\
+  @query_expr_admissible T relname basesort leaf_has_type call_has_type
+    predicate_has_types rank_type boolean_type value_is_null right.
 
 (** Bidirectional exact-outcome transport.  Successes retain order and bag
     multiplicity through [query_rows_rename]; every runtime error category is
@@ -919,21 +929,21 @@ Definition query_cross_join_local
 
 Definition query_join_local
     (env : Env.env T) (kind : query_join_kind)
-    (predicate : formula_expr T relname)
-    (matched_select left_select right_select : _select_list T)
+    (predicate : scalar_expr T relname ScalarResultBoolean)
+    (matched_select left_select right_select : @query_select_list T relname)
     (left_rows right_rows : list tuple)
     (outcome : sql_outcome (list tuple)) : Prop :=
   match outcome with
   | SqlError error =>
       @eval_join_bag_outcome T relname basesort instance unknown
-        symbol_runtime_error aggregate_runtime_error value_is_null env
+        symbol_runtime_error aggregate_runtime_error value_is_null boolean_schedule env
         kind predicate matched_select left_select right_select
         (query_rows_bag left_rows) (query_rows_bag right_rows)
         (SqlError error)
   | SqlSuccess output =>
       exists output_bag,
         @eval_join_bag_outcome T relname basesort instance unknown
-          symbol_runtime_error aggregate_runtime_error value_is_null env
+          symbol_runtime_error aggregate_runtime_error value_is_null boolean_schedule env
           kind predicate matched_select left_select right_select
           (query_rows_bag left_rows) (query_rows_bag right_rows)
           (SqlSuccess output_bag) /\
@@ -941,11 +951,11 @@ Definition query_join_local
   end.
 
 Definition query_project_local
-    (env : Env.env T) (select_list : _select_list T)
+    (env : Env.env T) (select_list : @query_select_list T relname)
     (rows : list tuple) (outcome : sql_outcome (list tuple)) : Prop :=
-  outcome =
-    @project_rows_outcome T symbol_runtime_error aggregate_runtime_error
-      env select_list rows.
+  @eval_project_rows_outcome T relname basesort instance unknown
+    symbol_runtime_error aggregate_runtime_error value_is_null
+    boolean_schedule env select_list rows outcome.
 
 Definition query_row_map_local
     (row_map : tuple -> sql_outcome tuple)
@@ -953,44 +963,45 @@ Definition query_row_map_local
   outcome = row_map_rows_outcome row_map rows.
 
 Definition query_filter_local
-    (env : Env.env T) (formula : formula_expr T relname)
+    (env : Env.env T) (expression : scalar_expr T relname ScalarResultBoolean)
     (rows : list tuple) (outcome : sql_outcome (list tuple)) : Prop :=
   @eval_filter_rows_outcome T relname basesort instance unknown
-    symbol_runtime_error aggregate_runtime_error value_is_null
-    env formula rows outcome.
+    symbol_runtime_error aggregate_runtime_error value_is_null boolean_schedule
+    env expression rows outcome.
 
 Definition query_group_local
-    (env : Env.env T) (select_list : _select_list T)
-    (group_terms : list (@aggterm T))
-    (having : formula_expr T relname)
+    (env : Env.env T) (select_list : @query_select_list T relname)
+    (group_keys : list (scalar_expr T relname ScalarResultValue))
+    (having : scalar_expr T relname ScalarResultBoolean)
     (rows : list tuple) (outcome : sql_outcome (list tuple)) : Prop :=
   match outcome with
   | SqlError error =>
       @eval_group_bag_outcome T relname basesort instance unknown
-        symbol_runtime_error aggregate_runtime_error value_is_null env
-        select_list group_terms having (query_rows_bag rows)
+        symbol_runtime_error aggregate_runtime_error value_is_null boolean_schedule env
+        select_list group_keys having (query_rows_bag rows)
         (SqlError error)
   | SqlSuccess output =>
       exists output_bag,
         @eval_group_bag_outcome T relname basesort instance unknown
-          symbol_runtime_error aggregate_runtime_error value_is_null env
-          select_list group_terms having (query_rows_bag rows)
+          symbol_runtime_error aggregate_runtime_error value_is_null boolean_schedule env
+          select_list group_keys having (query_rows_bag rows)
           (SqlSuccess output_bag) /\
         query_same_rows_as_bag output output_bag
   end.
 
 Definition query_grouping_sets_local
-    (env : Env.env T) (grouping_sets : list (query_grouping_set T))
+    (env : Env.env T)
+    (grouping_sets : list (@query_grouping_set T relname))
     (rows : list tuple) (outcome : sql_outcome (list tuple)) : Prop :=
   match outcome with
   | SqlError error =>
       @eval_grouping_sets_bag_outcome T relname basesort instance unknown
-        symbol_runtime_error aggregate_runtime_error value_is_null env
+        symbol_runtime_error aggregate_runtime_error value_is_null boolean_schedule env
         grouping_sets (query_rows_bag rows) (SqlError error)
   | SqlSuccess output =>
       exists output_bag,
         @eval_grouping_sets_bag_outcome T relname basesort instance unknown
-          symbol_runtime_error aggregate_runtime_error value_is_null env
+          symbol_runtime_error aggregate_runtime_error value_is_null boolean_schedule env
           grouping_sets (query_rows_bag rows) (SqlSuccess output_bag) /\
         query_same_rows_as_bag output output_bag
   end.
@@ -1258,7 +1269,7 @@ eapply query_binary_constructor_rename_transport with
   intros env outcome; apply eval_query_cross_join_binary_lift_iff.
 Qed.
 
-(** Native joins are conditional on one compatibility proof for the predicate,
+(** Shared-child joins are conditional on one compatibility proof for the predicate,
     all three kind-dependent projection lists and aliases, both child bags,
     exact Bool3 decisions, projected rows, and every local runtime error. *)
 Theorem QExpr_Join_rename_transport :
@@ -1276,7 +1287,7 @@ Theorem QExpr_Join_rename_transport :
         right_matched right_left_select right_right_select left' right') ->
     query_rename_transport_under environment_relation rho left left' ->
     query_rename_transport_under environment_relation rho right right' ->
-    query_formula_outcome_rename_compatible
+    query_scalar_expr_outcome_rename_compatible
       (query_join_environment_rename environment_relation rho)
       left_predicate right_predicate ->
     query_binary_local_rename_compatible environment_relation rho
@@ -1314,11 +1325,10 @@ Proof.
 intros env select_list input outcome; split; intro Heval.
 - inversion Heval; subst.
   + now apply QueryUnaryLiftChildError.
-  + apply QueryUnaryLiftLocal with (rows := input_rows); [assumption|reflexivity].
+  + apply QueryUnaryLiftLocal with (rows := input_rows); assumption.
 - inversion Heval; subst.
   + now apply EQuery_ProjectChildError.
-  + unfold query_project_local in H0; subst outcome.
-    now apply EQuery_ProjectRows.
+  + eapply EQuery_ProjectRows with (input_rows := rows); eassumption.
 Qed.
 
 Lemma eval_query_row_map_unary_lift_iff :
@@ -1338,12 +1348,12 @@ intros env outputs row_map input outcome; split; intro Heval.
 Qed.
 
 Lemma eval_query_filter_unary_lift_iff :
-  forall env formula input outcome,
-    eval_query env (QExpr_Filter formula input) outcome <->
+  forall env expression input outcome,
+    eval_query env (QExpr_Filter expression input) outcome <->
     query_unary_outcome_lift (eval_query env input)
-      (query_filter_local env formula) outcome.
+      (query_filter_local env expression) outcome.
 Proof.
-intros env formula input outcome; split; intro Heval.
+intros env expression input outcome; split; intro Heval.
 - inversion Heval; subst.
   + now apply QueryUnaryLiftChildError.
   + now apply QueryUnaryLiftLocal with (rows := input_rows).
@@ -1704,9 +1714,10 @@ Definition query_sort_keys_rename_compatible
     (left right : list (sort_key T)) : Prop :=
   Forall2 (query_sort_key_rename_compatible rho) left right.
 
-(** Projection compatibility covers every selected expression, output alias,
-    aggregate finalization, left-to-right error, and reachable renamed row
-    environment.  Merely renaming [Select_As] outputs is insufficient. *)
+(** Projection compatibility covers every canonical typed selected-expression
+    and output-alias pair, aggregate finalization, left-to-right error, and
+    reachable renamed row environment.  Renaming aliases alone is
+    insufficient. *)
 Theorem QExpr_Project_rename_transport :
   forall environment_relation rho left_select right_select input input',
     query_rename_schema_compatible rho
@@ -1760,7 +1771,7 @@ eapply query_unary_constructor_rename_transport with
 - intros env outcome; apply eval_query_row_map_unary_lift_iff.
 Qed.
 
-(** Filter transport requires exact formula outcomes in row-extended paired
+(** Filter transport requires exact expression outcomes in row-extended paired
     environments in addition to the final row scheduler.  Therefore FALSE and
     UNKNOWN cannot be exchanged merely because both fail [Bool.is_true]. *)
 Theorem QExpr_Filter_rename_transport :
@@ -1769,7 +1780,7 @@ Theorem QExpr_Filter_rename_transport :
       (QExpr_Filter left_formula input)
       (QExpr_Filter right_formula input') ->
     query_rename_transport_under environment_relation rho input input' ->
-    query_formula_outcome_rename_compatible
+    query_scalar_expr_outcome_rename_compatible
       (query_row_environment_rename environment_relation rho)
       left_formula right_formula ->
     query_unary_local_rename_compatible environment_relation rho
@@ -1793,34 +1804,36 @@ Qed.
     outcomes, correlated subqueries, and the eager aggregate-error precheck. *)
 Theorem QExpr_Group_rename_transport :
   forall environment_relation rho
-      left_select right_select left_terms right_terms
+      left_select right_select left_keys right_keys left_terms right_terms
       left_having right_having input input',
     query_rename_schema_compatible rho
-      (QExpr_Group left_select left_terms left_having input)
-      (QExpr_Group right_select right_terms right_having input') ->
+      (QExpr_Group left_select left_keys left_having input)
+      (QExpr_Group right_select right_keys right_having input') ->
     query_rename_transport_under environment_relation rho input input' ->
+    scalar_group_key_terms left_keys = Some left_terms ->
+    scalar_group_key_terms right_keys = Some right_terms ->
     query_group_formation_rename_compatible
       environment_relation rho left_terms right_terms ->
-    query_group_formula_outcome_rename_compatible
+    query_group_scalar_expr_outcome_rename_compatible
       (query_group_environment_rename
         environment_relation rho left_terms right_terms)
       left_having right_having ->
     query_unary_local_rename_compatible environment_relation rho
-      (fun env => query_group_local env left_select left_terms left_having)
-      (fun env => query_group_local env right_select right_terms right_having) ->
+      (fun env => query_group_local env left_select left_keys left_having)
+      (fun env => query_group_local env right_select right_keys right_having) ->
     query_rename_transport_under environment_relation rho
-      (QExpr_Group left_select left_terms left_having input)
-      (QExpr_Group right_select right_terms right_having input').
+      (QExpr_Group left_select left_keys left_having input)
+      (QExpr_Group right_select right_keys right_having input').
 Proof.
 intros environment_relation rho
-  left_select right_select left_terms right_terms
-  left_having right_having input input' Hschema Hinput _ _ Hlocal.
+  left_select right_select left_keys right_keys left_terms right_terms
+  left_having right_having input input' Hschema Hinput _ _ _ _ Hlocal.
 eapply query_unary_constructor_rename_transport with
   (child := input) (child' := input')
   (left_local := fun env =>
-    query_group_local env left_select left_terms left_having)
+    query_group_local env left_select left_keys left_having)
   (right_local := fun env =>
-    query_group_local env right_select right_terms right_having);
+    query_group_local env right_select right_keys right_having);
   try eassumption; intros env outcome; apply eval_query_group_unary_lift_iff.
 Qed.
 
@@ -2130,7 +2143,7 @@ Qed.
 (** A paired context compatibility relation reuses the existing complete
     [query_expr_context] grammar; it is a theorem interface, not another AST.
     Child contexts are certified from the matching constructor theorem.  The
-    formula-hole forms for JOIN, FILTER, and GROUP remain deliberately
+    expression-hole forms for JOIN, FILTER, and GROUP remain deliberately
     fail-closed until their exact Bool3/subquery/aggregate environment premises
     are supplied; query transport of the nested subquery alone is insufficient. *)
 Definition query_rename_context_compatible

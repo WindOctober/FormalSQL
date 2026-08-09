@@ -21,8 +21,17 @@ Require Import BasicFacts ListFacts ListPermut ListSort OrderedSet
     abstraction is complete for equivalence.
 
     Runtime errors are expression-level SQL observations evaluated from the
-    logical query structure.  They do not depend on optimizer or executor
-    scheduling choices. *)
+    logical query structure.  Boolean expressions additionally use one stable
+    compiled operand schedule, exposing every order permitted by PostgreSQL
+    without depending on a particular physical executor plan.
+
+    TODO: Ordinary strict scalar arguments and SELECT target items still choose
+    the first error in list order through [first_runtime_error] and
+    [eval_scalar_values_outcome].  This cannot affect safe-unconditional
+    certificates, which exclude every runtime error.  Before claiming complete
+    error-preserving semantics for expressions with multiple simultaneously
+    reachable error categories, either expose their evaluation schedule
+    relationally or make lowering reject that shape. *)
 
 Section Sec.
 
@@ -31,9 +40,6 @@ Hypothesis relname : Type.
 
 Import Tuple.
 
-Arguments Select_As {T}.
-Arguments Select_List {T}.
-Arguments _Select_List {T}.
 Arguments Group_By {T}.
 Arguments F_Dot {T}.
 Arguments A_Expr {T}.
@@ -54,12 +60,14 @@ Hypothesis aggregate_runtime_error :
   aggregate T -> list (option sql_runtime_error * value) ->
   option sql_runtime_error.
 Hypothesis value_is_null : value -> bool.
+Hypothesis boolean_schedule : boolean_site -> boolean_evaluation_order.
 
 Definition query_grouping_sets_outputs
-    (grouping_sets : list (query_grouping_set T)) : list (attribute T) :=
+    (grouping_sets : list (@query_grouping_set T relname)) :
+    list (attribute T) :=
   match grouping_sets with
   | nil => nil
-  | (select_list, _) :: _ => select_list_outputs select_list
+  | (select_list, _) :: _ => scalar_select_outputs select_list
   end.
 
 Definition query_outputs_sort (outputs : list (attribute T)) : setA :=
@@ -102,14 +110,11 @@ Fixpoint query_expr_outputs
       query_expr_outputs left_query ++ query_expr_outputs right_query
   | QExpr_Join kind _ matched_select left_select _ _ _ =>
       match kind with
-      | QueryJoinSemi | QueryJoinAnti => select_list_outputs left_select
-      | _ => select_list_outputs matched_select
+      | QueryJoinSemi | QueryJoinAnti => scalar_select_outputs left_select
+      | _ => scalar_select_outputs matched_select
       end
   | QExpr_Project select_list _
-  | QExpr_Group select_list _ _ _ => select_list_outputs select_list
-  | QExpr_ScalarProject select_list _ =>
-      scalar_select_outputs select_list
-  | QExpr_ScalarGroup select_list _ _ _ =>
+  | QExpr_Group select_list _ _ _ =>
       scalar_select_outputs select_list
   | QExpr_RowMap outputs _ _ => outputs
   | QExpr_GroupingSets grouping_sets _ =>
@@ -119,7 +124,6 @@ Fixpoint query_expr_outputs
   | QExpr_Window _ _ items input =>
       query_expr_outputs input ++ map (@qwi_attribute T) items
   | QExpr_Filter _ input
-  | QExpr_ScalarFilter _ input
   | QExpr_Distinct input
   | QExpr_OrderBy _ input
   | QExpr_Offset _ input
@@ -141,35 +145,10 @@ unfold query_expr_sort.
 now rewrite Houtputs; apply Fset.equal_refl.
 Qed.
 
-(** Aggregate finalization owned by the current formula query level.  This
-    traverses scalar formula/function structure but treats relational
-    subqueries as opaque: their aggregate errors arise from their own query
-    outcome. *)
-Fixpoint eval_formula_expr_aggregate_runtime_error
-    (env : Env.env T) (formula : formula_expr T relname) :
-    option sql_runtime_error :=
-  match formula with
-  | FExpr_Conj _ left_formula right_formula =>
-      first_error
-        (eval_formula_expr_aggregate_runtime_error env left_formula)
-        (eval_formula_expr_aggregate_runtime_error env right_formula)
-  | FExpr_Not inner => eval_formula_expr_aggregate_runtime_error env inner
-  | FExpr_True => None
-  | FExpr_Pred _ arguments
-  | FExpr_Quant _ _ arguments _ =>
-      first_runtime_error
-        (@eval_aggterm_aggregate_runtime_error T
-          symbol_runtime_error aggregate_runtime_error env) arguments
-  | FExpr_In select_items _ =>
-      first_runtime_error
-        (@eval_select_aggregate_runtime_error T
-          symbol_runtime_error aggregate_runtime_error env) select_items
-  | FExpr_Exists _ => None
-  | FExpr_Scalar expression =>
-      eval_scalar_expr_aggregate_runtime_error env expression
-  end
-
-with eval_scalar_expr_aggregate_runtime_error
+(** Aggregate finalization owned by the current query level traverses scalar
+    structure but treats relational subqueries as opaque: their aggregate
+    errors arise from their own query outcome. *)
+Fixpoint eval_scalar_expr_aggregate_runtime_error
     {kind : scalar_result_kind}
     (env : Env.env T) (expression : scalar_expr T relname kind) :
     option sql_runtime_error :=
@@ -193,10 +172,10 @@ with eval_scalar_expr_aggregate_runtime_error
       eval_scalar_expr_aggregate_runtime_error env expression
   | SExpr_ValueBool _ expression =>
       eval_scalar_expr_aggregate_runtime_error env expression
-  | SExpr_Conj _ left_expression right_expression =>
-      first_error
-        (eval_scalar_expr_aggregate_runtime_error env left_expression)
-        (eval_scalar_expr_aggregate_runtime_error env right_expression)
+  | SExpr_ConjList _ _ expressions =>
+      first_runtime_error
+        (@eval_scalar_expr_aggregate_runtime_error ScalarResultBoolean env)
+        expressions
   | SExpr_True => None
   | SExpr_Quant _ _ arguments _
   | SExpr_In arguments _ =>
@@ -450,31 +429,6 @@ Definition query_distinct_bag (input : bagT) : bagT :=
       (Feset.mk_set (Fecol.CSet (CTuple T))
         (Febag.elements BTupleT input))).
 
-(** Runtime checking and deterministic row transforms used by relational
-    query rules.  A projection checks rows and select items from left to right
-    and preserves the successful input order exactly. *)
-Fixpoint project_rows_outcome
-    (env : Env.env T)
-    (select_list : _select_list T)
-    (rows : list tuple) : sql_outcome (list tuple) :=
-  match rows with
-  | nil => SqlSuccess nil
-  | row :: rest =>
-      match @eval_select_list_runtime_error T
-              symbol_runtime_error aggregate_runtime_error
-              (env_t T env row) select_list with
-      | Some error => SqlError error
-      | None =>
-          match project_rows_outcome env select_list rest with
-          | SqlError error => SqlError error
-          | SqlSuccess output =>
-              SqlSuccess
-                (projection T (env_t T env row) (Select_List select_list)
-                   :: output)
-          end
-      end
-  end.
-
 Definition group_keys_runtime_error
     (env : Env.env T)
     (group_terms : list (@aggterm T))
@@ -511,23 +465,6 @@ Definition query_value_equal
     | Eq => Bool.true (B T)
     | Lt | Gt => Bool.false (B T)
     end.
-
-Fixpoint query_tuple_values_equal
-    (attributes : list (attribute T)) (left right : tuple) : Bool.b (B T) :=
-  match attributes with
-  | nil => Bool.true (B T)
-  | attribute :: rest =>
-      Bool.andb (B T)
-        (query_value_equal (dot T left attribute) (dot T right attribute))
-        (query_tuple_values_equal rest left right)
-  end.
-
-Definition query_tuple_equal (left right : tuple) : Bool.b (B T) :=
-  if labels T left =S?= labels T right
-  then
-    query_tuple_values_equal
-      (Fset.elements (A T) (labels T left)) left right
-  else Bool.false (B T).
 
 (** SQL NATURAL JOIN retains a pair only when equality on every common
     attribute is TRUE.  In particular, NULL = NULL is UNKNOWN rather than
@@ -648,23 +585,20 @@ Definition query_join_sources
   | _ => nil
   end.
 
-Definition project_join_source_outcome
-    (env : Env.env T)
-    (matched_select left_select right_select : _select_list T)
-    (source : query_join_source) : sql_outcome tuple :=
-  let '(row, select_list) :=
-    match source with
-    | JoinSourceMatched row => (row, matched_select)
-    | JoinSourceLeft row => (row, left_select)
-    | JoinSourceRight row => (row, right_select)
-    end in
-  match @eval_select_list_runtime_error T
-          symbol_runtime_error aggregate_runtime_error
-          (env_t T env row) select_list with
-  | Some error => SqlError error
-  | None =>
-      SqlSuccess
-        (projection T (env_t T env row) (Select_List select_list))
+Definition query_join_source_row (source : query_join_source) : tuple :=
+  match source with
+  | JoinSourceMatched row | JoinSourceLeft row | JoinSourceRight row => row
+  end.
+
+Definition query_join_source_select
+    (matched_select left_select right_select :
+      list (scalar_expr T relname ScalarResultValue * attribute T))
+    (source : query_join_source) :
+    list (scalar_expr T relname ScalarResultValue * attribute T) :=
+  match source with
+  | JoinSourceMatched _ => matched_select
+  | JoinSourceLeft _ => left_select
+  | JoinSourceRight _ => right_select
   end.
 
 (** Apply a deterministic row adapter in the exact child-list order.  The
@@ -687,25 +621,6 @@ Fixpoint row_map_rows_outcome
       end
   end.
 
-Fixpoint project_join_sources_outcome
-    (env : Env.env T)
-    (matched_select left_select right_select : _select_list T)
-    (sources : list query_join_source) : sql_outcome (list tuple) :=
-  match sources with
-  | nil => SqlSuccess nil
-  | source :: sources' =>
-      match project_join_source_outcome env
-              matched_select left_select right_select source with
-      | SqlError error => SqlError error
-      | SqlSuccess row =>
-          match project_join_sources_outcome env
-                  matched_select left_select right_select sources' with
-          | SqlError error => SqlError error
-          | SqlSuccess rows => SqlSuccess (row :: rows)
-          end
-      end
-  end.
-
 (** Small total combinators used by the relational scalar evaluator. *)
 Definition sql_outcome_map {A C : Type}
     (f : A -> C) (outcome : sql_outcome A) : sql_outcome C :=
@@ -722,7 +637,7 @@ Definition scalar_value_cons_outcome
   | SqlError error => SqlError error
   end.
 
-Definition scalar_project_cons_outcome
+Definition project_cons_outcome
     (head : tuple) (tail : sql_outcome (list tuple)) :
     sql_outcome (list tuple) :=
   match tail with
@@ -751,7 +666,7 @@ Definition scalar_bool_value_outcome
     (outcome : sql_outcome (Bool.b (B T))) : sql_outcome value :=
   sql_outcome_map embed outcome.
 
-Definition scalar_project_row
+Definition project_row
     (select_list : list
       (scalar_expr T relname ScalarResultValue * attribute T))
     (values : list value) : tuple :=
@@ -800,10 +715,6 @@ Definition query_rows_cardinality_outcome
     (outcome : sql_outcome (list tuple)) : sql_outcome nat :=
   sql_outcome_map (@length tuple) outcome.
 
-Definition query_offset_cardinality_outcome
-    (offset : nat) (outcome : sql_outcome nat) : sql_outcome nat :=
-  sql_outcome_map (fun cardinality => cardinality - offset) outcome.
-
 Definition query_fetch_cardinality_outcome
     (count : nat) (outcome : sql_outcome nat) : sql_outcome nat :=
   sql_outcome_map (Nat.min count) outcome.
@@ -832,13 +743,10 @@ Definition query_exists_requires_rows
     (query : query_expr T relname) : bool :=
   match query with
   | QExpr_Project _ _
-  | QExpr_ScalarProject _ _
   | QExpr_RowMap _ _ _
   | QExpr_Filter _ _
-  | QExpr_ScalarFilter _ _
   | QExpr_Join _ _ _ _ _ _ _
   | QExpr_Group _ _ _ _
-  | QExpr_ScalarGroup _ _ _ _
   | QExpr_GroupingSets _ _
   | QExpr_Distinct _
   | QExpr_OrderBy _ _
@@ -851,7 +759,6 @@ Definition query_exists_uses_cardinality
   match query with
   | QExpr_Join _ _ _ _ _ _ _
   | QExpr_Group _ _ _ _
-  | QExpr_ScalarGroup _ _ _ _
   | QExpr_GroupingSets _ _ => true
   | _ => false
   end.
@@ -863,40 +770,103 @@ Definition query_cardinality_requires_rows
     (query : query_expr T relname) : bool :=
   match query with
   | QExpr_Project _ _
-  | QExpr_ScalarProject _ _
   | QExpr_RowMap _ _ _
   | QExpr_Join _ _ _ _ _ _ _
   | QExpr_Group _ _ _ _
-  | QExpr_ScalarGroup _ _ _ _
   | QExpr_GroupingSets _ _
   | QExpr_OrderBy _ _
   | QExpr_Fetch _ _ => false
   | _ => true
   end.
 
-(** [SExpr_Conj] gives a closed FormalSQL term deterministic left-to-right
-    short-circuit semantics.  PostgreSQL may reorganize Boolean operands, so
-    SQL lowering may construct this term only when every operand is pure and
-    runtime-total (or when separate authoritative evaluation-order evidence is
-    available).  [Bool.is_true (Bool.negb truth)] distinguishes FALSE from
-    UNKNOWN in the generic three-valued Boolean interface. *)
-Definition scalar_conj_requires_right
+(** PostgreSQL does not assign a source-order evaluation schedule to Boolean
+    operands.  Either operand may be evaluated first, and evaluation may stop
+    once that operand determines the result.  The big-step rules below expose
+    all such outcomes.  This predicate identifies the decisive SQL truth value
+    for each connective; [Bool.is_true (Bool.negb truth)] distinguishes FALSE
+    from UNKNOWN in the generic three-valued Boolean interface. *)
+Definition scalar_conj_operand_decides
     (operation : and_or) (truth : Bool.b (B T)) : bool :=
   match operation with
-  | And_F => negb (Bool.is_true (B T) (Bool.negb (B T) truth))
-  | Or_F => negb (Bool.is_true (B T) truth)
+  | And_F => Bool.is_true (B T) (Bool.negb (B T) truth)
+  | Or_F => Bool.is_true (B T) truth
   end.
 
-Definition scalar_conj_short_result
+Definition scalar_conj_decisive_result
     (operation : and_or) : Bool.b (B T) :=
   match operation with
   | And_F => Bool.false (B T)
   | Or_F => Bool.true (B T)
   end.
 
+Definition scalar_conj_identity
+    (operation : and_or) : Bool.b (B T) :=
+  match operation with
+  | And_F => Bool.true (B T)
+  | Or_F => Bool.false (B T)
+  end.
+
+Definition scalar_conj_cons_outcome
+    (operation : and_or) (head : Bool.b (B T))
+    (tail : sql_outcome (Bool.b (B T))) :
+    sql_outcome (Bool.b (B T)) :=
+  match tail with
+  | SqlSuccess truth => SqlSuccess (interp_conj (B T) operation head truth)
+  | SqlError error => SqlError error
+  end.
+
+(** Insert one newly lowered Boolean operand into the order already chosen for
+    preceding operands.  Each site makes one stable binary choice.  A row of
+    [n] sites can place the new operand in any of the [n+1] positions; folding
+    these rows therefore represents every permutation of a flattened AND/OR.
+    The fallback branches keep the function total, while typed admissibility
+    requires the exact triangular site shape. *)
+Fixpoint insert_boolean_operand
+    (sites : list boolean_site)
+    (operand : scalar_expr T relname ScalarResultBoolean)
+    (ordered : list (scalar_expr T relname ScalarResultBoolean)) :
+    list (scalar_expr T relname ScalarResultBoolean) :=
+  match ordered with
+  | nil => operand :: nil
+  | current :: rest =>
+      match sites with
+      | nil => operand :: current :: rest
+      | site :: remaining_sites =>
+          match boolean_schedule site with
+          | BooleanLeftFirst => operand :: current :: rest
+          | BooleanRightFirst =>
+              current ::
+                insert_boolean_operand remaining_sites operand rest
+          end
+      end
+  end.
+
+Fixpoint schedule_boolean_operands_aux
+    (site_rows : list (list boolean_site))
+    (operands ordered :
+      list (scalar_expr T relname ScalarResultBoolean)) :
+    list (scalar_expr T relname ScalarResultBoolean) :=
+  match operands with
+  | nil => ordered
+  | operand :: remaining_operands =>
+      match site_rows with
+      | sites :: remaining_rows =>
+          schedule_boolean_operands_aux remaining_rows remaining_operands
+            (insert_boolean_operand sites operand ordered)
+      | nil =>
+          schedule_boolean_operands_aux nil remaining_operands
+            (ordered ++ operand :: nil)
+      end
+  end.
+
+Definition schedule_boolean_operands
+    (site_rows : list (list boolean_site))
+    (operands : list (scalar_expr T relname ScalarResultBoolean)) :
+    list (scalar_expr T relname ScalarResultBoolean) :=
+  schedule_boolean_operands_aux site_rows operands nil.
+
 (**
-  The relations below form one big-step semantics.  Formula and scalar
-  subqueries
+  The relations below form one big-step semantics.  Typed scalar subqueries
   are evaluated under the current (possibly correlated) environment.  Filter
   and group-processing relations are explicit members of the mutual family so
   no deterministic child bag is selected behind the relational interface.
@@ -1027,24 +997,14 @@ Inductive eval_query_expr_outcome
   | EQuery_ProjectChildError :
       forall select_list input error,
         eval_query_expr_outcome env input (SqlError error) ->
-        eval_query_expr_outcome env (QExpr_Project select_list input)
-          (SqlError error)
-  | EQuery_ProjectRows :
-      forall select_list input input_rows,
-        eval_query_expr_outcome env input (SqlSuccess input_rows) ->
-        eval_query_expr_outcome env (QExpr_Project select_list input)
-          (project_rows_outcome env select_list input_rows)
-  | EQuery_ScalarProjectChildError :
-      forall select_list input error,
-        eval_query_expr_outcome env input (SqlError error) ->
         eval_query_expr_outcome env
-          (QExpr_ScalarProject select_list input) (SqlError error)
-  | EQuery_ScalarProjectRows :
+          (QExpr_Project select_list input) (SqlError error)
+  | EQuery_ProjectRows :
       forall select_list input input_rows outcome,
         eval_query_expr_outcome env input (SqlSuccess input_rows) ->
-        eval_scalar_project_rows_outcome env select_list input_rows outcome ->
+        eval_project_rows_outcome env select_list input_rows outcome ->
         eval_query_expr_outcome env
-          (QExpr_ScalarProject select_list input) outcome
+          (QExpr_Project select_list input) outcome
   | EQuery_RowMapChildError :
       forall output_attributes row_map input error,
         eval_query_expr_outcome env input (SqlError error) ->
@@ -1067,30 +1027,20 @@ Inductive eval_query_expr_outcome
         eval_query_expr_outcome env input (SqlSuccess input_rows) ->
         eval_filter_rows_outcome env formula input_rows outcome ->
         eval_query_expr_outcome env (QExpr_Filter formula input) outcome
-  | EQuery_ScalarFilterChildError :
-      forall expression input error,
-        eval_query_expr_outcome env input (SqlError error) ->
-        eval_query_expr_outcome env
-          (QExpr_ScalarFilter expression input) (SqlError error)
-  | EQuery_ScalarFilterRows :
-      forall expression input input_rows outcome,
-        eval_query_expr_outcome env input (SqlSuccess input_rows) ->
-        eval_filter_rows_outcome env (FExpr_Scalar expression)
-          input_rows outcome ->
-        eval_query_expr_outcome env
-          (QExpr_ScalarFilter expression input) outcome
   | EQuery_GroupChildError :
       forall select_list group_terms having input error,
         eval_query_expr_outcome env input (SqlError error) ->
         eval_query_expr_outcome env
-          (QExpr_Group select_list group_terms having input) (SqlError error)
+          (QExpr_Group select_list group_terms having input)
+          (SqlError error)
   | EQuery_GroupBagError :
       forall select_list group_terms having input input_rows error,
         eval_query_expr_outcome env input (SqlSuccess input_rows) ->
         eval_group_bag_outcome env select_list group_terms having
           (query_rows_bag input_rows) (SqlError error) ->
         eval_query_expr_outcome env
-          (QExpr_Group select_list group_terms having input) (SqlError error)
+          (QExpr_Group select_list group_terms having input)
+          (SqlError error)
   | EQuery_GroupBagSuccess :
       forall select_list group_terms having input input_rows output_bag output,
         eval_query_expr_outcome env input (SqlSuccess input_rows) ->
@@ -1098,29 +1048,7 @@ Inductive eval_query_expr_outcome
           (query_rows_bag input_rows) (SqlSuccess output_bag) ->
         query_same_rows_as_bag output output_bag ->
         eval_query_expr_outcome env
-          (QExpr_Group select_list group_terms having input) (SqlSuccess output)
-  | EQuery_ScalarGroupChildError :
-      forall select_list group_terms having input error,
-        eval_query_expr_outcome env input (SqlError error) ->
-        eval_query_expr_outcome env
-          (QExpr_ScalarGroup select_list group_terms having input)
-          (SqlError error)
-  | EQuery_ScalarGroupBagError :
-      forall select_list group_terms having input input_rows error,
-        eval_query_expr_outcome env input (SqlSuccess input_rows) ->
-        eval_scalar_group_bag_outcome env select_list group_terms having
-          (query_rows_bag input_rows) (SqlError error) ->
-        eval_query_expr_outcome env
-          (QExpr_ScalarGroup select_list group_terms having input)
-          (SqlError error)
-  | EQuery_ScalarGroupBagSuccess :
-      forall select_list group_terms having input input_rows output_bag output,
-        eval_query_expr_outcome env input (SqlSuccess input_rows) ->
-        eval_scalar_group_bag_outcome env select_list group_terms having
-          (query_rows_bag input_rows) (SqlSuccess output_bag) ->
-        query_same_rows_as_bag output output_bag ->
-        eval_query_expr_outcome env
-          (QExpr_ScalarGroup select_list group_terms having input)
+          (QExpr_Group select_list group_terms having input)
           (SqlSuccess output)
   | EQuery_GroupingSetsChildError :
       forall grouping_sets input error,
@@ -1234,149 +1162,6 @@ Inductive eval_query_expr_outcome
         eval_query_expr_outcome env input (SqlSuccess input_rows) ->
         eval_query_expr_outcome env (QExpr_Fetch count input)
           (SqlSuccess (firstn count input_rows))
-with eval_formula_expr_outcome
-    (env : Env.env T) :
-    formula_expr T relname -> sql_outcome (Bool.b (B T)) -> Prop :=
-  | EFormula_ConjLeftError :
-      forall operation left right error,
-        eval_formula_expr_outcome env left (SqlError error) ->
-        eval_formula_expr_outcome env (FExpr_Conj operation left right)
-          (SqlError error)
-  | EFormula_ConjRightError :
-      forall operation left right left_truth error,
-        eval_formula_expr_outcome env left (SqlSuccess left_truth) ->
-        eval_formula_expr_outcome env right (SqlError error) ->
-        eval_formula_expr_outcome env (FExpr_Conj operation left right)
-          (SqlError error)
-  | EFormula_ConjSuccess :
-      forall operation left right left_truth right_truth,
-        eval_formula_expr_outcome env left (SqlSuccess left_truth) ->
-        eval_formula_expr_outcome env right (SqlSuccess right_truth) ->
-        eval_formula_expr_outcome env (FExpr_Conj operation left right)
-          (SqlSuccess
-            (interp_conj (B T) operation left_truth right_truth))
-  | EFormula_NotError :
-      forall formula error,
-        eval_formula_expr_outcome env formula (SqlError error) ->
-        eval_formula_expr_outcome env (FExpr_Not formula) (SqlError error)
-  | EFormula_NotSuccess :
-      forall formula truth,
-        eval_formula_expr_outcome env formula (SqlSuccess truth) ->
-        eval_formula_expr_outcome env (FExpr_Not formula)
-          (SqlSuccess (Bool.negb (B T) truth))
-  | EFormula_True :
-      eval_formula_expr_outcome env FExpr_True
-        (SqlSuccess (Bool.true (B T)))
-  | EFormula_PredError :
-      forall predicate arguments error,
-        first_runtime_error
-          (@eval_aggterm_runtime_error T
-            symbol_runtime_error aggregate_runtime_error env)
-          arguments = Some error ->
-        eval_formula_expr_outcome env (FExpr_Pred predicate arguments)
-          (SqlError error)
-  | EFormula_PredSuccess :
-      forall predicate arguments,
-        first_runtime_error
-          (@eval_aggterm_runtime_error T
-            symbol_runtime_error aggregate_runtime_error env)
-          arguments = None ->
-        eval_formula_expr_outcome env (FExpr_Pred predicate arguments)
-          (SqlSuccess
-            (interp_predicate T predicate
-              (map (@interp_aggterm T env) arguments)))
-  | EFormula_QuantArgumentsError :
-      forall quantifier predicate arguments subquery error,
-        first_runtime_error
-          (@eval_aggterm_runtime_error T
-            symbol_runtime_error aggregate_runtime_error env)
-          arguments = Some error ->
-        eval_formula_expr_outcome env
-          (FExpr_Quant quantifier predicate arguments subquery) (SqlError error)
-  | EFormula_QuantSubqueryError :
-      forall quantifier predicate arguments subquery error,
-        first_runtime_error
-          (@eval_aggterm_runtime_error T
-            symbol_runtime_error aggregate_runtime_error env)
-          arguments = None ->
-        eval_query_expr_outcome env subquery (SqlError error) ->
-        eval_formula_expr_outcome env
-          (FExpr_Quant quantifier predicate arguments subquery) (SqlError error)
-  | EFormula_QuantSuccess :
-      forall quantifier predicate arguments subquery rows,
-        first_runtime_error
-          (@eval_aggterm_runtime_error T
-            symbol_runtime_error aggregate_runtime_error env)
-          arguments = None ->
-        eval_query_expr_outcome env subquery (SqlSuccess rows) ->
-        eval_formula_expr_outcome env
-          (FExpr_Quant quantifier predicate arguments subquery)
-          (SqlSuccess
-            (let interpreted_arguments := map (@interp_aggterm T env) arguments in
-             interp_quant (B T) quantifier
-               (fun row =>
-                 interp_predicate T predicate
-                   (interpreted_arguments ++
-                    map (dot T row) (query_expr_outputs subquery)))
-               (query_canonical_rows rows)))
-  | EFormula_InArgumentsError :
-      forall select_items subquery error,
-        first_runtime_error
-          (@eval_select_runtime_error T
-            symbol_runtime_error aggregate_runtime_error env)
-          select_items = Some error ->
-        eval_formula_expr_outcome env (FExpr_In select_items subquery)
-          (SqlError error)
-  | EFormula_InSubqueryError :
-      forall select_items subquery error,
-        first_runtime_error
-          (@eval_select_runtime_error T
-            symbol_runtime_error aggregate_runtime_error env)
-          select_items = None ->
-        eval_query_expr_outcome env subquery (SqlError error) ->
-        eval_formula_expr_outcome env (FExpr_In select_items subquery)
-          (SqlError error)
-  | EFormula_InSuccess :
-      forall select_items subquery rows,
-        first_runtime_error
-          (@eval_select_runtime_error T
-            symbol_runtime_error aggregate_runtime_error env)
-          select_items = None ->
-        eval_query_expr_outcome env subquery (SqlSuccess rows) ->
-        eval_formula_expr_outcome env (FExpr_In select_items subquery)
-          (SqlSuccess
-            (let projected :=
-               projection T env (Select_List (_Select_List select_items)) in
-             interp_quant (B T) Exists_F
-               (query_tuple_equal projected)
-               (query_canonical_rows rows)))
-  | EFormula_ExistsError :
-      forall subquery error,
-        eval_query_exists_outcome env subquery (SqlError error) ->
-        eval_formula_expr_outcome env (FExpr_Exists subquery) (SqlError error)
-  | EFormula_ExistsSuccessEmpty :
-      forall subquery,
-        eval_query_exists_outcome env subquery
-          (SqlSuccess (Bool.false (B T))) ->
-        eval_formula_expr_outcome env (FExpr_Exists subquery)
-          (SqlSuccess (Bool.false (B T)))
-  | EFormula_ExistsSuccessNonempty :
-      forall subquery,
-        eval_query_exists_outcome env subquery
-          (SqlSuccess (Bool.true (B T))) ->
-        eval_formula_expr_outcome env (FExpr_Exists subquery)
-          (SqlSuccess (Bool.true (B T)))
-  | EFormula_ScalarError :
-      forall expression error,
-        eval_scalar_boolean_expr_outcome env expression (SqlError error) ->
-        eval_formula_expr_outcome env (FExpr_Scalar expression)
-          (SqlError error)
-  | EFormula_ScalarSuccess :
-      forall expression truth,
-        eval_scalar_boolean_expr_outcome env expression (SqlSuccess truth) ->
-        eval_formula_expr_outcome env (FExpr_Scalar expression)
-          (SqlSuccess truth)
-
 with eval_scalar_value_expr_outcome
     (env : Env.env T) :
     scalar_expr T relname ScalarResultValue -> sql_outcome value -> Prop :=
@@ -1453,34 +1238,12 @@ with eval_scalar_boolean_expr_outcome
         eval_scalar_boolean_expr_outcome env
           (SExpr_Pred predicate arguments)
           (SqlSuccess (interp_predicate T predicate values))
-  | EScalar_ConjLeftError :
-      forall operation left right error,
-        eval_scalar_boolean_expr_outcome env left (SqlError error) ->
+  | EScalar_ConjList :
+      forall site_rows operation expressions outcome,
+        eval_scalar_boolean_operands_outcome env operation
+          (schedule_boolean_operands site_rows expressions) outcome ->
         eval_scalar_boolean_expr_outcome env
-          (SExpr_Conj operation left right) (SqlError error)
-  | EScalar_ConjShortCircuit :
-      forall operation left right left_truth,
-        eval_scalar_boolean_expr_outcome env left (SqlSuccess left_truth) ->
-        scalar_conj_requires_right operation left_truth = false ->
-        eval_scalar_boolean_expr_outcome env
-          (SExpr_Conj operation left right)
-          (SqlSuccess (scalar_conj_short_result operation))
-  | EScalar_ConjRightError :
-      forall operation left right left_truth error,
-        eval_scalar_boolean_expr_outcome env left (SqlSuccess left_truth) ->
-        scalar_conj_requires_right operation left_truth = true ->
-        eval_scalar_boolean_expr_outcome env right (SqlError error) ->
-        eval_scalar_boolean_expr_outcome env
-          (SExpr_Conj operation left right) (SqlError error)
-  | EScalar_ConjSuccess :
-      forall operation left right left_truth right_truth,
-        eval_scalar_boolean_expr_outcome env left (SqlSuccess left_truth) ->
-        scalar_conj_requires_right operation left_truth = true ->
-        eval_scalar_boolean_expr_outcome env right (SqlSuccess right_truth) ->
-        eval_scalar_boolean_expr_outcome env
-          (SExpr_Conj operation left right)
-          (SqlSuccess
-            (interp_conj (B T) operation left_truth right_truth))
+          (SExpr_ConjList site_rows operation expressions) outcome
   | EScalar_NotError :
       forall expression error,
         eval_scalar_boolean_expr_outcome env expression (SqlError error) ->
@@ -1552,6 +1315,35 @@ with eval_scalar_boolean_expr_outcome
         eval_scalar_boolean_expr_outcome env (SExpr_Exists subquery)
           (SqlSuccess truth)
 
+with eval_scalar_boolean_operands_outcome
+    (env : Env.env T) :
+    and_or -> list (scalar_expr T relname ScalarResultBoolean) ->
+    sql_outcome (Bool.b (B T)) -> Prop :=
+  | EScalarBooleanOperands_Nil :
+      forall operation,
+      eval_scalar_boolean_operands_outcome env operation nil
+        (SqlSuccess (scalar_conj_identity operation))
+  | EScalarBooleanOperands_HeadError :
+      forall operation expression expressions error,
+        eval_scalar_boolean_expr_outcome env expression (SqlError error) ->
+        eval_scalar_boolean_operands_outcome env operation
+          (expression :: expressions) (SqlError error)
+  | EScalarBooleanOperands_HeadDecides :
+      forall operation expression expressions truth,
+        eval_scalar_boolean_expr_outcome env expression (SqlSuccess truth) ->
+        scalar_conj_operand_decides operation truth = true ->
+        eval_scalar_boolean_operands_outcome env operation
+          (expression :: expressions)
+          (SqlSuccess (scalar_conj_decisive_result operation))
+  | EScalarBooleanOperands_Continue :
+      forall operation expression expressions truth tail,
+        eval_scalar_boolean_expr_outcome env expression (SqlSuccess truth) ->
+        scalar_conj_operand_decides operation truth = false ->
+        eval_scalar_boolean_operands_outcome env operation expressions tail ->
+        eval_scalar_boolean_operands_outcome env operation
+          (expression :: expressions)
+          (scalar_conj_cons_outcome operation truth tail)
+
 with eval_scalar_values_outcome
     (env : Env.env T) :
     list (scalar_expr T relname ScalarResultValue) ->
@@ -1570,28 +1362,68 @@ with eval_scalar_values_outcome
         eval_scalar_values_outcome env (expression :: expressions)
           (scalar_value_cons_outcome value tail)
 
-with eval_scalar_project_rows_outcome
+with eval_project_rows_outcome
     (env : Env.env T) :
     list (scalar_expr T relname ScalarResultValue * attribute T) ->
     list tuple -> sql_outcome (list tuple) -> Prop :=
-  | EScalarProjectRows_Nil :
+  | EProjectRows_Nil :
       forall select_list,
-        eval_scalar_project_rows_outcome env select_list nil
+        eval_project_rows_outcome env select_list nil
           (SqlSuccess nil)
-  | EScalarProjectRows_HeadError :
+  | EProjectRows_HeadError :
       forall select_list row rows error,
         eval_scalar_values_outcome (env_t T env row)
           (map fst select_list) (SqlError error) ->
-        eval_scalar_project_rows_outcome env select_list (row :: rows)
+        eval_project_rows_outcome env select_list (row :: rows)
           (SqlError error)
-  | EScalarProjectRows_Cons :
+  | EProjectRows_Cons :
       forall select_list row rows values tail,
         eval_scalar_values_outcome (env_t T env row)
           (map fst select_list) (SqlSuccess values) ->
-        eval_scalar_project_rows_outcome env select_list rows tail ->
-        eval_scalar_project_rows_outcome env select_list (row :: rows)
-          (scalar_project_cons_outcome
-            (scalar_project_row select_list values) tail)
+        eval_project_rows_outcome env select_list rows tail ->
+        eval_project_rows_outcome env select_list (row :: rows)
+          (project_cons_outcome
+            (project_row select_list values) tail)
+
+with eval_project_join_sources_outcome
+    (env : Env.env T) :
+    list (scalar_expr T relname ScalarResultValue * attribute T) ->
+    list (scalar_expr T relname ScalarResultValue * attribute T) ->
+    list (scalar_expr T relname ScalarResultValue * attribute T) ->
+    list query_join_source -> sql_outcome (list tuple) -> Prop :=
+  | EProjectJoinSources_Nil :
+      forall matched_select left_select right_select,
+        eval_project_join_sources_outcome env
+          matched_select left_select right_select nil (SqlSuccess nil)
+  | EProjectJoinSources_HeadError :
+      forall matched_select left_select right_select source sources error,
+        eval_scalar_values_outcome
+          (env_t T env (query_join_source_row source))
+          (map fst
+            (query_join_source_select
+              matched_select left_select right_select source))
+          (SqlError error) ->
+        eval_project_join_sources_outcome env
+          matched_select left_select right_select (source :: sources)
+          (SqlError error)
+  | EProjectJoinSources_Cons :
+      forall matched_select left_select right_select source sources values tail,
+        eval_scalar_values_outcome
+          (env_t T env (query_join_source_row source))
+          (map fst
+            (query_join_source_select
+              matched_select left_select right_select source))
+          (SqlSuccess values) ->
+        eval_project_join_sources_outcome env
+          matched_select left_select right_select sources tail ->
+        eval_project_join_sources_outcome env
+          matched_select left_select right_select (source :: sources)
+          (project_cons_outcome
+            (project_row
+              (query_join_source_select
+                matched_select left_select right_select source)
+              values)
+            tail)
 
 (** Native cardinality demand for EXISTS.  Transparent target-only operators
     reuse the same recursively chosen cardinality; value/cardinality-sensitive
@@ -1631,31 +1463,19 @@ with eval_query_cardinality_outcome
           (QExpr_Join kind predicate matched_select left_select right_select
             left right) outcome
   | ECardinality_GroupChildError :
-      forall select_list group_terms having input error,
-        eval_query_expr_outcome env input (SqlError error) ->
-        eval_query_cardinality_outcome env
-          (QExpr_Group select_list group_terms having input) (SqlError error)
-  | ECardinality_Group :
-      forall select_list group_terms having input input_rows outcome,
-        eval_query_expr_outcome env input (SqlSuccess input_rows) ->
-        eval_group_cardinality_outcome env select_list group_terms having
-          (query_rows_bag input_rows) outcome ->
-        eval_query_cardinality_outcome env
-          (QExpr_Group select_list group_terms having input) outcome
-  | ECardinality_ScalarGroupChildError :
       forall select_list group_keys having input error,
         eval_query_expr_outcome env input (SqlError error) ->
         eval_query_cardinality_outcome env
-          (QExpr_ScalarGroup select_list group_keys having input)
+          (QExpr_Group select_list group_keys having input)
           (SqlError error)
-  | ECardinality_ScalarGroup :
+  | ECardinality_Group :
       forall select_list group_keys group_terms having input input_rows outcome,
         scalar_group_key_terms group_keys = Some group_terms ->
         eval_query_expr_outcome env input (SqlSuccess input_rows) ->
-        eval_scalar_group_cardinality_outcome env select_list group_terms
+        eval_group_cardinality_outcome env select_list group_terms
           having (query_rows_bag input_rows) outcome ->
         eval_query_cardinality_outcome env
-          (QExpr_ScalarGroup select_list group_keys having input) outcome
+          (QExpr_Group select_list group_keys having input) outcome
   | ECardinality_GroupingSetsChildError :
       forall grouping_sets input error,
         eval_query_expr_outcome env input (SqlError error) ->
@@ -1673,11 +1493,6 @@ with eval_query_cardinality_outcome
         eval_query_cardinality_outcome env input outcome ->
         eval_query_cardinality_outcome env
           (QExpr_Project select_list input) outcome
-  | ECardinality_ScalarProject :
-      forall select_list input outcome,
-        eval_query_cardinality_outcome env input outcome ->
-        eval_query_cardinality_outcome env
-          (QExpr_ScalarProject select_list input) outcome
   | ECardinality_RowMap :
       forall outputs row_map input outcome,
         eval_query_cardinality_outcome env input outcome ->
@@ -1716,11 +1531,6 @@ with eval_query_exists_outcome
       forall select_list input outcome,
         eval_query_exists_outcome env input outcome ->
         eval_query_exists_outcome env (QExpr_Project select_list input) outcome
-  | EExists_ScalarProject :
-      forall select_list input outcome,
-        eval_query_exists_outcome env input outcome ->
-        eval_query_exists_outcome env
-          (QExpr_ScalarProject select_list input) outcome
   | EExists_RowMap :
       forall outputs row_map input outcome,
         eval_query_exists_outcome env input outcome ->
@@ -1736,17 +1546,6 @@ with eval_query_exists_outcome
         eval_query_expr_outcome env input (SqlSuccess rows) ->
         eval_filter_exists_outcome env formula rows outcome ->
         eval_query_exists_outcome env (QExpr_Filter formula input) outcome
-  | EExists_ScalarFilterChildError :
-      forall expression input error,
-        eval_query_expr_outcome env input (SqlError error) ->
-        eval_query_exists_outcome env (QExpr_ScalarFilter expression input)
-          (SqlError error)
-  | EExists_ScalarFilterRows :
-      forall expression input rows outcome,
-        eval_query_expr_outcome env input (SqlSuccess rows) ->
-        eval_filter_exists_outcome env (FExpr_Scalar expression) rows outcome ->
-        eval_query_exists_outcome env (QExpr_ScalarFilter expression input)
-          outcome
   | EExists_Distinct :
       forall input outcome,
         eval_query_exists_outcome env input outcome ->
@@ -1767,7 +1566,7 @@ with eval_query_exists_outcome
 
 with eval_filter_exists_outcome
     (env : Env.env T) :
-    formula_expr T relname -> list tuple ->
+    scalar_expr T relname ScalarResultBoolean -> list tuple ->
     sql_outcome (Bool.b (B T)) -> Prop :=
   | EFilterExists_Nil :
       forall formula,
@@ -1775,20 +1574,20 @@ with eval_filter_exists_outcome
           (SqlSuccess (Bool.false (B T)))
   | EFilterExists_HeadError :
       forall formula row rows error,
-        eval_formula_expr_outcome (env_t T env row) formula
+        eval_scalar_boolean_expr_outcome (env_t T env row) formula
           (SqlError error) ->
         eval_filter_exists_outcome env formula (row :: rows)
           (SqlError error)
   | EFilterExists_HeadTrue :
       forall formula row rows truth,
-        eval_formula_expr_outcome (env_t T env row) formula
+        eval_scalar_boolean_expr_outcome (env_t T env row) formula
           (SqlSuccess truth) ->
         Bool.is_true (B T) truth = true ->
         eval_filter_exists_outcome env formula (row :: rows)
           (SqlSuccess (Bool.true (B T)))
   | EFilterExists_HeadFalse :
       forall formula row rows truth outcome,
-        eval_formula_expr_outcome (env_t T env row) formula
+        eval_scalar_boolean_expr_outcome (env_t T env row) formula
           (SqlSuccess truth) ->
         Bool.is_true (B T) truth = false ->
         eval_filter_exists_outcome env formula rows outcome ->
@@ -1796,20 +1595,20 @@ with eval_filter_exists_outcome
 
 with eval_filter_rows_outcome
     (env : Env.env T) :
-    formula_expr T relname -> list tuple ->
+    scalar_expr T relname ScalarResultBoolean -> list tuple ->
     sql_outcome (list tuple) -> Prop :=
   | EFilterRows_Nil :
       forall formula,
         eval_filter_rows_outcome env formula nil (SqlSuccess nil)
   | EFilterRows_HeadError :
       forall formula row rows error,
-        eval_formula_expr_outcome (env_t T env row) formula
+        eval_scalar_boolean_expr_outcome (env_t T env row) formula
           (SqlError error) ->
         eval_filter_rows_outcome env formula (row :: rows)
           (SqlError error)
   | EFilterRows_Cons :
       forall formula row rows truth tail,
-        eval_formula_expr_outcome (env_t T env row) formula
+        eval_scalar_boolean_expr_outcome (env_t T env row) formula
           (SqlSuccess truth) ->
         eval_filter_rows_outcome env formula rows tail ->
         eval_filter_rows_outcome env formula (row :: rows)
@@ -1819,49 +1618,46 @@ with eval_filter_rows_outcome
     from the logical groups formed by the enclosing aggregate operator. *)
 with eval_groups_outcome
     (env : Env.env T) :
-    _select_list T -> list (@aggterm T) -> formula_expr T relname ->
+    list (scalar_expr T relname ScalarResultValue * attribute T) ->
+    list (@aggterm T) -> scalar_expr T relname ScalarResultBoolean ->
     list (list tuple) -> sql_outcome (list tuple) -> Prop :=
   | EGroups_Nil :
       forall select_list group_terms having,
         eval_groups_outcome env select_list group_terms having nil
           (SqlSuccess nil)
-  | EGroups_AggregateError :
+  | EGroups_SelectAggregateError :
       forall select_list group_terms having group groups error,
-        @eval_select_list_aggregate_runtime_error T
-          symbol_runtime_error aggregate_runtime_error
+        eval_scalar_select_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) select_list =
           Some error ->
         eval_groups_outcome env select_list group_terms having
           (group :: groups) (SqlError error)
   | EGroups_HavingAggregateError :
       forall select_list group_terms having group groups error,
-        @eval_select_list_aggregate_runtime_error T
-          symbol_runtime_error aggregate_runtime_error
+        eval_scalar_select_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_formula_expr_aggregate_runtime_error
+        eval_scalar_expr_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) having = Some error ->
         eval_groups_outcome env select_list group_terms having
           (group :: groups) (SqlError error)
   | EGroups_HavingError :
       forall select_list group_terms having group groups error,
-        @eval_select_list_aggregate_runtime_error T
-          symbol_runtime_error aggregate_runtime_error
+        eval_scalar_select_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_formula_expr_aggregate_runtime_error
+        eval_scalar_expr_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) having = None ->
-        eval_formula_expr_outcome
+        eval_scalar_boolean_expr_outcome
           (env_g T env (@Group_By T group_terms) group) having
           (SqlError error) ->
         eval_groups_outcome env select_list group_terms having
           (group :: groups) (SqlError error)
   | EGroups_HavingFalse :
       forall select_list group_terms having group groups truth outcome,
-        @eval_select_list_aggregate_runtime_error T
-          symbol_runtime_error aggregate_runtime_error
+        eval_scalar_select_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_formula_expr_aggregate_runtime_error
+        eval_scalar_expr_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) having = None ->
-        eval_formula_expr_outcome
+        eval_scalar_boolean_expr_outcome
           (env_g T env (@Group_By T group_terms) group) having
           (SqlSuccess truth) ->
         Bool.is_true (B T) truth = false ->
@@ -1870,99 +1666,6 @@ with eval_groups_outcome
         eval_groups_outcome env select_list group_terms having
           (group :: groups) outcome
   | EGroups_SelectError :
-      forall select_list group_terms having group groups truth error,
-        @eval_select_list_aggregate_runtime_error T
-          symbol_runtime_error aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_formula_expr_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) having = None ->
-        eval_formula_expr_outcome
-          (env_g T env (@Group_By T group_terms) group) having
-          (SqlSuccess truth) ->
-        Bool.is_true (B T) truth = true ->
-        @eval_select_list_runtime_error T
-          symbol_runtime_error aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) select_list =
-          Some error ->
-        eval_groups_outcome env select_list group_terms having
-          (group :: groups) (SqlError error)
-  | EGroups_SelectSuccess :
-      forall select_list group_terms having group groups truth tail,
-        @eval_select_list_aggregate_runtime_error T
-          symbol_runtime_error aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_formula_expr_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) having = None ->
-        eval_formula_expr_outcome
-          (env_g T env (@Group_By T group_terms) group) having
-          (SqlSuccess truth) ->
-        Bool.is_true (B T) truth = true ->
-        @eval_select_list_runtime_error T
-          symbol_runtime_error aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_groups_outcome env select_list group_terms having
-          groups tail ->
-        eval_groups_outcome env select_list group_terms having
-          (group :: groups)
-          (group_cons_outcome
-            (projection T
-              (env_g T env (@Group_By T group_terms) group)
-              (Select_List select_list)) tail)
-
-(** Native grouped scalar evaluation mirrors [eval_groups_outcome] but builds
-    each target row from the one scalar-expression evaluation selected for
-    that group.  Aggregate finalization precedes HAVING, while scalar target
-    callbacks and target subqueries remain dead when HAVING rejects a group. *)
-with eval_scalar_groups_outcome
-    (env : Env.env T) :
-    list (scalar_expr T relname ScalarResultValue * attribute T) ->
-    list (@aggterm T) -> scalar_expr T relname ScalarResultBoolean ->
-    list (list tuple) -> sql_outcome (list tuple) -> Prop :=
-  | EScalarGroups_Nil :
-      forall select_list group_terms having,
-        eval_scalar_groups_outcome env select_list group_terms having nil
-          (SqlSuccess nil)
-  | EScalarGroups_SelectAggregateError :
-      forall select_list group_terms having group groups error,
-        eval_scalar_select_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) select_list =
-          Some error ->
-        eval_scalar_groups_outcome env select_list group_terms having
-          (group :: groups) (SqlError error)
-  | EScalarGroups_HavingAggregateError :
-      forall select_list group_terms having group groups error,
-        eval_scalar_select_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_scalar_expr_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) having = Some error ->
-        eval_scalar_groups_outcome env select_list group_terms having
-          (group :: groups) (SqlError error)
-  | EScalarGroups_HavingError :
-      forall select_list group_terms having group groups error,
-        eval_scalar_select_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_scalar_expr_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) having = None ->
-        eval_scalar_boolean_expr_outcome
-          (env_g T env (@Group_By T group_terms) group) having
-          (SqlError error) ->
-        eval_scalar_groups_outcome env select_list group_terms having
-          (group :: groups) (SqlError error)
-  | EScalarGroups_HavingFalse :
-      forall select_list group_terms having group groups truth outcome,
-        eval_scalar_select_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_scalar_expr_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) having = None ->
-        eval_scalar_boolean_expr_outcome
-          (env_g T env (@Group_By T group_terms) group) having
-          (SqlSuccess truth) ->
-        Bool.is_true (B T) truth = false ->
-        eval_scalar_groups_outcome env select_list group_terms having
-          groups outcome ->
-        eval_scalar_groups_outcome env select_list group_terms having
-          (group :: groups) outcome
-  | EScalarGroups_SelectError :
       forall select_list group_terms having group groups truth error,
         eval_scalar_select_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) select_list = None ->
@@ -1975,9 +1678,9 @@ with eval_scalar_groups_outcome
         eval_scalar_values_outcome
           (env_g T env (@Group_By T group_terms) group)
           (map fst select_list) (SqlError error) ->
-        eval_scalar_groups_outcome env select_list group_terms having
+        eval_groups_outcome env select_list group_terms having
           (group :: groups) (SqlError error)
-  | EScalarGroups_SelectSuccess :
+  | EGroups_SelectSuccess :
       forall select_list group_terms having group groups truth values tail,
         eval_scalar_select_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) select_list = None ->
@@ -1990,11 +1693,11 @@ with eval_scalar_groups_outcome
         eval_scalar_values_outcome
           (env_g T env (@Group_By T group_terms) group)
           (map fst select_list) (SqlSuccess values) ->
-        eval_scalar_groups_outcome env select_list group_terms having
+        eval_groups_outcome env select_list group_terms having
           groups tail ->
-        eval_scalar_groups_outcome env select_list group_terms having
+        eval_groups_outcome env select_list group_terms having
           (group :: groups)
-          (group_cons_outcome (scalar_project_row select_list values) tail)
+          (group_cons_outcome (project_row select_list values) tail)
 
 (** Grouping is a bag-consuming reset point.  The relation existentially
     chooses a row-list representative of the input bag and evaluates that
@@ -2003,74 +1706,40 @@ with eval_scalar_groups_outcome
     permutation instead of silently selecting one canonical fold order. *)
 with eval_group_bag_outcome
     (env : Env.env T) :
-    _select_list T -> list (@aggterm T) -> formula_expr T relname ->
-    bagT -> sql_outcome bagT -> Prop :=
-  | EGroupBag_KeyError :
-      forall select_list group_terms having input_bag representative error,
-        query_same_rows_as_bag representative input_bag ->
-        group_keys_runtime_error env group_terms
-          representative = Some error ->
-        eval_group_bag_outcome env select_list group_terms having input_bag
-          (SqlError error)
-  | EGroupBag_ProcessError :
-      forall select_list group_terms having input_bag representative error,
-        query_same_rows_as_bag representative input_bag ->
-        group_keys_runtime_error env group_terms
-          representative = None ->
-        eval_groups_outcome env select_list group_terms having
-          (query_make_groups env representative group_terms)
-          (SqlError error) ->
-        eval_group_bag_outcome env select_list group_terms having input_bag
-          (SqlError error)
-  | EGroupBag_Success :
-      forall select_list group_terms having input_bag representative
-             grouped_rows output_bag,
-        query_same_rows_as_bag representative input_bag ->
-        group_keys_runtime_error env group_terms
-          representative = None ->
-        eval_groups_outcome env select_list group_terms having
-          (query_make_groups env representative group_terms)
-          (SqlSuccess grouped_rows) ->
-        query_same_rows_as_bag grouped_rows output_bag ->
-        eval_group_bag_outcome env select_list group_terms having input_bag
-          (SqlSuccess output_bag)
-
-with eval_scalar_group_bag_outcome
-    (env : Env.env T) :
     list (scalar_expr T relname ScalarResultValue * attribute T) ->
     list (scalar_expr T relname ScalarResultValue) ->
     scalar_expr T relname ScalarResultBoolean ->
     bagT -> sql_outcome bagT -> Prop :=
-  | EScalarGroupBag_KeyError :
+  | EGroupBag_KeyError :
       forall select_list group_keys group_terms having input_bag
              representative error,
         scalar_group_key_terms group_keys = Some group_terms ->
         query_same_rows_as_bag representative input_bag ->
         group_keys_runtime_error env group_terms representative = Some error ->
-        eval_scalar_group_bag_outcome env select_list group_keys having
+        eval_group_bag_outcome env select_list group_keys having
           input_bag (SqlError error)
-  | EScalarGroupBag_ProcessError :
+  | EGroupBag_ProcessError :
       forall select_list group_keys group_terms having input_bag
              representative error,
         scalar_group_key_terms group_keys = Some group_terms ->
         query_same_rows_as_bag representative input_bag ->
         group_keys_runtime_error env group_terms representative = None ->
-        eval_scalar_groups_outcome env select_list group_terms having
+        eval_groups_outcome env select_list group_terms having
           (query_make_groups env representative group_terms)
           (SqlError error) ->
-        eval_scalar_group_bag_outcome env select_list group_keys having
+        eval_group_bag_outcome env select_list group_keys having
           input_bag (SqlError error)
-  | EScalarGroupBag_Success :
+  | EGroupBag_Success :
       forall select_list group_keys group_terms having input_bag
              representative grouped_rows output_bag,
         scalar_group_key_terms group_keys = Some group_terms ->
         query_same_rows_as_bag representative input_bag ->
         group_keys_runtime_error env group_terms representative = None ->
-        eval_scalar_groups_outcome env select_list group_terms having
+        eval_groups_outcome env select_list group_terms having
           (query_make_groups env representative group_terms)
           (SqlSuccess grouped_rows) ->
         query_same_rows_as_bag grouped_rows output_bag ->
-        eval_scalar_group_bag_outcome env select_list group_keys having
+        eval_group_bag_outcome env select_list group_keys having
           input_bag (SqlSuccess output_bag)
 
 (** EXISTS does not evaluate ordinary target expressions, but PostgreSQL
@@ -2079,207 +1748,122 @@ with eval_scalar_group_bag_outcome
     leaving post-HAVING scalar target computation dead. *)
 with eval_groups_cardinality_outcome
     (env : Env.env T) :
-    _select_list T -> list (@aggterm T) -> formula_expr T relname ->
+    list (scalar_expr T relname ScalarResultValue * attribute T) ->
+    list (@aggterm T) -> scalar_expr T relname ScalarResultBoolean ->
     list (list tuple) -> sql_outcome nat -> Prop :=
   | EGroupsCardinality_Nil :
       forall select_list group_terms having,
-        eval_groups_cardinality_outcome env select_list group_terms having nil
-          (SqlSuccess O)
+        eval_groups_cardinality_outcome env select_list group_terms
+          having nil (SqlSuccess O)
   | EGroupsCardinality_SelectAggregateError :
       forall select_list group_terms having group groups error,
-        @eval_select_list_aggregate_runtime_error T
-          symbol_runtime_error aggregate_runtime_error
+        eval_scalar_select_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) select_list =
           Some error ->
-        eval_groups_cardinality_outcome env select_list group_terms having
-          (group :: groups) (SqlError error)
+        eval_groups_cardinality_outcome env select_list group_terms
+          having (group :: groups) (SqlError error)
   | EGroupsCardinality_HavingAggregateError :
       forall select_list group_terms having group groups error,
-        @eval_select_list_aggregate_runtime_error T
-          symbol_runtime_error aggregate_runtime_error
+        eval_scalar_select_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_formula_expr_aggregate_runtime_error
+        eval_scalar_expr_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) having = Some error ->
-        eval_groups_cardinality_outcome env select_list group_terms having
-          (group :: groups) (SqlError error)
+        eval_groups_cardinality_outcome env select_list group_terms
+          having (group :: groups) (SqlError error)
   | EGroupsCardinality_HavingError :
       forall select_list group_terms having group groups error,
-        @eval_select_list_aggregate_runtime_error T
-          symbol_runtime_error aggregate_runtime_error
+        eval_scalar_select_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_formula_expr_aggregate_runtime_error
+        eval_scalar_expr_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) having = None ->
-        eval_formula_expr_outcome
+        eval_scalar_boolean_expr_outcome
           (env_g T env (@Group_By T group_terms) group) having
           (SqlError error) ->
-        eval_groups_cardinality_outcome env select_list group_terms having
-          (group :: groups) (SqlError error)
+        eval_groups_cardinality_outcome env select_list group_terms
+          having (group :: groups) (SqlError error)
   | EGroupsCardinality_HavingFalse :
       forall select_list group_terms having group groups truth outcome,
-        @eval_select_list_aggregate_runtime_error T
-          symbol_runtime_error aggregate_runtime_error
+        eval_scalar_select_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_formula_expr_aggregate_runtime_error
+        eval_scalar_expr_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) having = None ->
-        eval_formula_expr_outcome
+        eval_scalar_boolean_expr_outcome
           (env_g T env (@Group_By T group_terms) group) having
           (SqlSuccess truth) ->
         Bool.is_true (B T) truth = false ->
-        eval_groups_cardinality_outcome env select_list group_terms having
-          groups outcome ->
-        eval_groups_cardinality_outcome env select_list group_terms having
-          (group :: groups) outcome
+        eval_groups_cardinality_outcome env select_list group_terms
+          having groups outcome ->
+        eval_groups_cardinality_outcome env select_list group_terms
+          having (group :: groups) outcome
   | EGroupsCardinality_HavingTrue :
       forall select_list group_terms having group groups truth tail,
-        @eval_select_list_aggregate_runtime_error T
-          symbol_runtime_error aggregate_runtime_error
+        eval_scalar_select_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_formula_expr_aggregate_runtime_error
+        eval_scalar_expr_aggregate_runtime_error
           (env_g T env (@Group_By T group_terms) group) having = None ->
-        eval_formula_expr_outcome
+        eval_scalar_boolean_expr_outcome
           (env_g T env (@Group_By T group_terms) group) having
           (SqlSuccess truth) ->
         Bool.is_true (B T) truth = true ->
-        eval_groups_cardinality_outcome env select_list group_terms having
-          groups tail ->
-        eval_groups_cardinality_outcome env select_list group_terms having
-          (group :: groups) (query_cardinality_cons_outcome tail)
+        eval_groups_cardinality_outcome env select_list group_terms
+          having groups tail ->
+        eval_groups_cardinality_outcome env select_list group_terms
+          having (group :: groups) (query_cardinality_cons_outcome tail)
 
 with eval_group_cardinality_outcome
     (env : Env.env T) :
-    _select_list T -> list (@aggterm T) -> formula_expr T relname ->
+    list (scalar_expr T relname ScalarResultValue * attribute T) ->
+    list (@aggterm T) -> scalar_expr T relname ScalarResultBoolean ->
     bagT -> sql_outcome nat -> Prop :=
   | EGroupCardinality_KeyError :
       forall select_list group_terms having input_bag representative error,
         query_same_rows_as_bag representative input_bag ->
         group_keys_runtime_error env group_terms representative = Some error ->
-        eval_group_cardinality_outcome env select_list group_terms having
-          input_bag
-          (SqlError error)
+        eval_group_cardinality_outcome env select_list group_terms
+          having input_bag (SqlError error)
   | EGroupCardinality_Process :
       forall select_list group_terms having input_bag representative outcome,
         query_same_rows_as_bag representative input_bag ->
         group_keys_runtime_error env group_terms representative = None ->
-        eval_groups_cardinality_outcome env select_list group_terms having
-          (query_make_groups env representative group_terms) outcome ->
-        eval_group_cardinality_outcome env select_list group_terms having
-          input_bag outcome
-
-with eval_scalar_groups_cardinality_outcome
-    (env : Env.env T) :
-    list (scalar_expr T relname ScalarResultValue * attribute T) ->
-    list (@aggterm T) -> scalar_expr T relname ScalarResultBoolean ->
-    list (list tuple) -> sql_outcome nat -> Prop :=
-  | EScalarGroupsCardinality_Nil :
-      forall select_list group_terms having,
-        eval_scalar_groups_cardinality_outcome env select_list group_terms
-          having nil (SqlSuccess O)
-  | EScalarGroupsCardinality_SelectAggregateError :
-      forall select_list group_terms having group groups error,
-        eval_scalar_select_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) select_list =
-          Some error ->
-        eval_scalar_groups_cardinality_outcome env select_list group_terms
-          having (group :: groups) (SqlError error)
-  | EScalarGroupsCardinality_HavingAggregateError :
-      forall select_list group_terms having group groups error,
-        eval_scalar_select_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_scalar_expr_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) having = Some error ->
-        eval_scalar_groups_cardinality_outcome env select_list group_terms
-          having (group :: groups) (SqlError error)
-  | EScalarGroupsCardinality_HavingError :
-      forall select_list group_terms having group groups error,
-        eval_scalar_select_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_scalar_expr_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) having = None ->
-        eval_scalar_boolean_expr_outcome
-          (env_g T env (@Group_By T group_terms) group) having
-          (SqlError error) ->
-        eval_scalar_groups_cardinality_outcome env select_list group_terms
-          having (group :: groups) (SqlError error)
-  | EScalarGroupsCardinality_HavingFalse :
-      forall select_list group_terms having group groups truth outcome,
-        eval_scalar_select_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_scalar_expr_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) having = None ->
-        eval_scalar_boolean_expr_outcome
-          (env_g T env (@Group_By T group_terms) group) having
-          (SqlSuccess truth) ->
-        Bool.is_true (B T) truth = false ->
-        eval_scalar_groups_cardinality_outcome env select_list group_terms
-          having groups outcome ->
-        eval_scalar_groups_cardinality_outcome env select_list group_terms
-          having (group :: groups) outcome
-  | EScalarGroupsCardinality_HavingTrue :
-      forall select_list group_terms having group groups truth tail,
-        eval_scalar_select_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) select_list = None ->
-        eval_scalar_expr_aggregate_runtime_error
-          (env_g T env (@Group_By T group_terms) group) having = None ->
-        eval_scalar_boolean_expr_outcome
-          (env_g T env (@Group_By T group_terms) group) having
-          (SqlSuccess truth) ->
-        Bool.is_true (B T) truth = true ->
-        eval_scalar_groups_cardinality_outcome env select_list group_terms
-          having groups tail ->
-        eval_scalar_groups_cardinality_outcome env select_list group_terms
-          having (group :: groups) (query_cardinality_cons_outcome tail)
-
-with eval_scalar_group_cardinality_outcome
-    (env : Env.env T) :
-    list (scalar_expr T relname ScalarResultValue * attribute T) ->
-    list (@aggterm T) -> scalar_expr T relname ScalarResultBoolean ->
-    bagT -> sql_outcome nat -> Prop :=
-  | EScalarGroupCardinality_KeyError :
-      forall select_list group_terms having input_bag representative error,
-        query_same_rows_as_bag representative input_bag ->
-        group_keys_runtime_error env group_terms representative = Some error ->
-        eval_scalar_group_cardinality_outcome env select_list group_terms
-          having input_bag (SqlError error)
-  | EScalarGroupCardinality_Process :
-      forall select_list group_terms having input_bag representative outcome,
-        query_same_rows_as_bag representative input_bag ->
-        group_keys_runtime_error env group_terms representative = None ->
-        eval_scalar_groups_cardinality_outcome env select_list group_terms
+        eval_groups_cardinality_outcome env select_list group_terms
           having (query_make_groups env representative group_terms) outcome ->
-        eval_scalar_group_cardinality_outcome env select_list group_terms
+        eval_group_cardinality_outcome env select_list group_terms
           having input_bag outcome
 
 with eval_grouping_sets_cardinality_outcome
     (env : Env.env T) :
-    list (query_grouping_set T) -> bagT -> sql_outcome nat -> Prop :=
+    list (@query_grouping_set T relname) -> bagT -> sql_outcome nat -> Prop :=
   | EGroupingSetsCardinality_Nil :
       forall input_bag,
         eval_grouping_sets_cardinality_outcome env nil input_bag
           (SqlSuccess O)
   | EGroupingSetsCardinality_HeadError :
-      forall select_list group_terms grouping_sets input_bag error,
-        eval_group_cardinality_outcome env select_list group_terms FExpr_True
+      forall select_list group_keys group_terms grouping_sets input_bag error,
+        scalar_group_key_terms group_keys = Some group_terms ->
+        eval_group_cardinality_outcome env select_list group_terms SExpr_True
           input_bag (SqlError error) ->
         eval_grouping_sets_cardinality_outcome env
-          ((select_list, group_terms) :: grouping_sets) input_bag
+          ((select_list, group_keys) :: grouping_sets) input_bag
           (SqlError error)
   | EGroupingSetsCardinality_TailError :
-      forall select_list group_terms grouping_sets input_bag head error,
-        eval_group_cardinality_outcome env select_list group_terms FExpr_True
+      forall select_list group_keys group_terms grouping_sets input_bag head error,
+        scalar_group_key_terms group_keys = Some group_terms ->
+        eval_group_cardinality_outcome env select_list group_terms SExpr_True
           input_bag (SqlSuccess head) ->
         eval_grouping_sets_cardinality_outcome env grouping_sets input_bag
           (SqlError error) ->
         eval_grouping_sets_cardinality_outcome env
-          ((select_list, group_terms) :: grouping_sets) input_bag
+          ((select_list, group_keys) :: grouping_sets) input_bag
           (SqlError error)
   | EGroupingSetsCardinality_ConsSuccess :
-      forall select_list group_terms grouping_sets input_bag head tail,
-        eval_group_cardinality_outcome env select_list group_terms FExpr_True
+      forall select_list group_keys group_terms grouping_sets input_bag head tail,
+        scalar_group_key_terms group_keys = Some group_terms ->
+        eval_group_cardinality_outcome env select_list group_terms SExpr_True
           input_bag (SqlSuccess head) ->
         eval_grouping_sets_cardinality_outcome env grouping_sets input_bag
           (SqlSuccess tail) ->
         eval_grouping_sets_cardinality_outcome env
-          ((select_list, group_terms) :: grouping_sets) input_bag
+          ((select_list, group_keys) :: grouping_sets) input_bag
           (SqlSuccess (head + tail))
 
 (** Every branch consumes the same chosen child bag.  Successful branches are
@@ -2288,44 +1872,44 @@ with eval_grouping_sets_cardinality_outcome
     re-evaluates, clones, or otherwise re-chooses the child query outcome. *)
 with eval_grouping_sets_bag_outcome
     (env : Env.env T) :
-    list (query_grouping_set T) -> bagT -> sql_outcome bagT -> Prop :=
+    list (@query_grouping_set T relname) -> bagT -> sql_outcome bagT -> Prop :=
   | EGroupingSets_Nil :
       forall input_bag,
         eval_grouping_sets_bag_outcome env nil input_bag
           (SqlSuccess (Febag.empty BTupleT))
   | EGroupingSets_HeadError :
-      forall select_list group_terms grouping_sets input_bag error,
-        eval_group_bag_outcome env select_list group_terms FExpr_True input_bag
+      forall select_list group_keys grouping_sets input_bag error,
+        eval_group_bag_outcome env select_list group_keys SExpr_True input_bag
           (SqlError error) ->
         eval_grouping_sets_bag_outcome env
-          ((select_list, group_terms) :: grouping_sets) input_bag
+          ((select_list, group_keys) :: grouping_sets) input_bag
           (SqlError error)
   | EGroupingSets_TailError :
-      forall select_list group_terms grouping_sets input_bag head_bag error,
-        eval_group_bag_outcome env select_list group_terms FExpr_True input_bag
+      forall select_list group_keys grouping_sets input_bag head_bag error,
+        eval_group_bag_outcome env select_list group_keys SExpr_True input_bag
           (SqlSuccess head_bag) ->
         eval_grouping_sets_bag_outcome env grouping_sets input_bag
           (SqlError error) ->
         eval_grouping_sets_bag_outcome env
-          ((select_list, group_terms) :: grouping_sets) input_bag
+          ((select_list, group_keys) :: grouping_sets) input_bag
           (SqlError error)
   | EGroupingSets_ConsSuccess :
-      forall select_list group_terms grouping_sets input_bag head_bag tail_bag,
-        eval_group_bag_outcome env select_list group_terms FExpr_True input_bag
+      forall select_list group_keys grouping_sets input_bag head_bag tail_bag,
+        eval_group_bag_outcome env select_list group_keys SExpr_True input_bag
           (SqlSuccess head_bag) ->
         eval_grouping_sets_bag_outcome env grouping_sets input_bag
           (SqlSuccess tail_bag) ->
         eval_grouping_sets_bag_outcome env
-          ((select_list, group_terms) :: grouping_sets) input_bag
+          ((select_list, group_keys) :: grouping_sets) input_bag
           (SqlSuccess (query_set_bag Union head_bag tail_bag))
 
 (** Row-major condition evaluation.  These two relations are mutual with the
-    query/formula semantics so predicate subqueries consume their complete
+    query/scalar semantics so predicate subqueries consume their complete
     exact outcome relations.  A successful derivation fixes one matrix and
     the join output is derived only from that same matrix. *)
 with eval_join_row_conditions_outcome
     (env : Env.env T) :
-    formula_expr T relname -> tuple -> list tuple ->
+    scalar_expr T relname ScalarResultBoolean -> tuple -> list tuple ->
     sql_outcome (list bool) -> Prop :=
   | EJoinRowConditions_Nil :
       forall predicate left,
@@ -2333,14 +1917,14 @@ with eval_join_row_conditions_outcome
           (SqlSuccess nil)
   | EJoinRowConditions_HeadError :
       forall predicate left right rights error,
-        eval_formula_expr_outcome
+        eval_scalar_boolean_expr_outcome
           (env_t T env (join_tuple T left right)) predicate
           (SqlError error) ->
         eval_join_row_conditions_outcome env predicate left
           (right :: rights) (SqlError error)
   | EJoinRowConditions_Cons :
       forall predicate left right rights truth flags,
-        eval_formula_expr_outcome
+        eval_scalar_boolean_expr_outcome
           (env_t T env (join_tuple T left right)) predicate
           (SqlSuccess truth) ->
         eval_join_row_conditions_outcome env predicate left rights
@@ -2351,7 +1935,7 @@ with eval_join_row_conditions_outcome
 
 with eval_join_conditions_outcome
     (env : Env.env T) :
-    formula_expr T relname -> list tuple -> list tuple ->
+    scalar_expr T relname ScalarResultBoolean -> list tuple -> list tuple ->
     sql_outcome (list (list bool)) -> Prop :=
   | EJoinConditions_Nil :
       forall predicate rights,
@@ -2379,8 +1963,9 @@ with eval_join_conditions_outcome
     different child outcomes. *)
 with eval_join_bag_outcome
     (env : Env.env T) :
-    query_join_kind -> formula_expr T relname ->
-    _select_list T -> _select_list T -> _select_list T ->
+    query_join_kind -> scalar_expr T relname ScalarResultBoolean ->
+    @query_select_list T relname -> @query_select_list T relname ->
+    @query_select_list T relname ->
     bagT -> bagT -> sql_outcome bagT -> Prop :=
   | EJoinBag_ConditionError :
       forall kind predicate matched_select left_select right_select
@@ -2399,10 +1984,10 @@ with eval_join_bag_outcome
         query_same_rows_as_bag right_rows right_bag ->
         eval_join_conditions_outcome env predicate left_rows right_rows
           (SqlSuccess matrix) ->
-        project_join_sources_outcome env
+        eval_project_join_sources_outcome env
           matched_select left_select right_select
-          (query_join_sources kind left_rows right_rows matrix) =
-          SqlError error ->
+          (query_join_sources kind left_rows right_rows matrix)
+          (SqlError error) ->
         eval_join_bag_outcome env kind predicate
           matched_select left_select right_select left_bag right_bag
           (SqlError error)
@@ -2414,10 +1999,10 @@ with eval_join_bag_outcome
         query_same_rows_as_bag right_rows right_bag ->
         eval_join_conditions_outcome env predicate left_rows right_rows
           (SqlSuccess matrix) ->
-        project_join_sources_outcome env
+        eval_project_join_sources_outcome env
           matched_select left_select right_select
-          (query_join_sources kind left_rows right_rows matrix) =
-          SqlSuccess projected ->
+          (query_join_sources kind left_rows right_rows matrix)
+          (SqlSuccess projected) ->
         query_same_rows_as_bag projected output_bag ->
         eval_join_bag_outcome env kind predicate
           matched_select left_select right_select left_bag right_bag
@@ -2427,7 +2012,7 @@ with eval_join_bag_outcome
     but never evaluates the matched/unmatched target projection lists. *)
 with eval_join_cardinality_outcome
     (env : Env.env T) :
-    query_join_kind -> formula_expr T relname ->
+    query_join_kind -> scalar_expr T relname ScalarResultBoolean ->
     bagT -> bagT -> sql_outcome nat -> Prop :=
   | EJoinCardinality_ConditionError :
       forall kind predicate left_bag right_bag left_rows right_rows error,
@@ -2447,7 +2032,12 @@ with eval_join_cardinality_outcome
           (SqlSuccess
             (length (query_join_sources kind left_rows right_rows matrix))).
 
-(** Observation equivalence is success-only: both sides must have a success,
+(** The unqualified equivalence relations below close over this section's one
+    [boolean_schedule].  They are pointwise proof foundations, not final SQL
+    rewrite certificates; the public possible-schedule relations are defined
+    in [PossibleSchedules] below.
+
+    Observation equivalence is success-only: both sides must have a success,
     neither may produce an error, and their legal successful lists are exactly
     the same.  It deliberately says nothing about the static result schema. *)
 Definition query_expr_observation_equiv
@@ -2507,7 +2097,11 @@ split; [exact Houtputs |].
 now apply query_expr_observation_equiv_implies_outcome_observation_equiv.
 Qed.
 
-(** A query program is an ordered, stateless sequence of read-only query
+(** The scheduled program relations are retained as pointwise proof
+    foundations.  Public programs use [query_program_possible_equiv] or
+    [query_program_possible_outcome_equiv].
+
+    A query program is an ordered, stateless sequence of read-only query
     expressions evaluated against the same database and outer environment.
     Program equivalence is deliberately pointwise: it preserves statement
     count and order, keeps each statement's independent result shape, and
@@ -2614,6 +2208,118 @@ intros env left; induction left as [| left_query left_program IH];
 Qed.
 
 End Sec.
+
+(** Public observations hide one query-wide compiled Boolean schedule.  The
+    scheduled evaluator above remains the compositional proof interface; this
+    wrapper is the SQL observation relation used at generated goal boundaries. *)
+Section PossibleSchedules.
+
+Hypothesis T : Tuple.Rcd.
+Hypothesis relname : Type.
+
+Import Tuple.
+
+Local Definition possible_tuple := tuple T.
+Local Definition possible_value := value T.
+Local Definition possible_setA := Fset.set (A T).
+Local Definition possible_BTupleT := Fecol.CBag (CTuple T).
+Local Definition possible_bagT := Febag.bag possible_BTupleT.
+
+Hypothesis basesort : relname -> possible_setA.
+Hypothesis instance : relname -> possible_bagT.
+Hypothesis unknown : Bool.b (B T).
+Hypothesis symbol_runtime_error :
+  scalar_operator T -> list (option sql_runtime_error * possible_value) ->
+  option sql_runtime_error.
+Hypothesis aggregate_runtime_error :
+  aggregate T -> list (option sql_runtime_error * possible_value) ->
+  option sql_runtime_error.
+Hypothesis value_is_null : possible_value -> bool.
+
+Definition eval_query_expr_possible_outcome
+    (env : Env.env T) (query : query_expr T relname)
+    (outcome : sql_outcome (list possible_tuple)) : Prop :=
+  exists schedule : boolean_site -> boolean_evaluation_order,
+    @eval_query_expr_outcome T relname basesort instance unknown
+      symbol_runtime_error aggregate_runtime_error value_is_null schedule
+      env query outcome.
+
+Definition query_expr_possible_observation_equiv
+    (env : Env.env T) (left right : query_expr T relname) : Prop :=
+  successful_relation_equiv (@ordered_rows_equiv T)
+    (eval_query_expr_possible_outcome env left)
+    (eval_query_expr_possible_outcome env right).
+
+Definition query_expr_possible_equiv
+    (env : Env.env T) (left right : query_expr T relname) : Prop :=
+  query_expr_outputs left = query_expr_outputs right /\
+  query_expr_possible_observation_equiv env left right.
+
+Definition query_expr_possible_outcome_observation_equiv
+    (env : Env.env T) (left right : query_expr T relname) : Prop :=
+  outcome_relation_equiv (@ordered_rows_equiv T)
+    (eval_query_expr_possible_outcome env left)
+    (eval_query_expr_possible_outcome env right).
+
+Definition query_expr_possible_outcome_equiv
+    (env : Env.env T) (left right : query_expr T relname) : Prop :=
+  query_expr_outputs left = query_expr_outputs right /\
+  query_expr_possible_outcome_observation_equiv env left right.
+
+(** Safe equivalence over all planner schedules implies error-preserving
+    equivalence over the same complete outcome relations. *)
+Lemma query_expr_possible_equiv_implies_possible_outcome_equiv :
+  forall env left right,
+    query_expr_possible_equiv env left right ->
+    query_expr_possible_outcome_equiv env left right.
+Proof.
+intros env left right [Houtputs Hobservations].
+split; [exact Houtputs|].
+unfold query_expr_possible_observation_equiv,
+  query_expr_possible_outcome_observation_equiv in *.
+now apply successful_relation_equiv_implies_outcome_relation_equiv.
+Qed.
+
+(** Read-only programs observe each statement independently.  In particular,
+    a planner may compile different Boolean sites differently in distinct
+    statements, so the existential schedule remains local to each query. *)
+Fixpoint query_program_possible_equiv
+    (env : Env.env T)
+    (left right : list (query_expr T relname)) : Prop :=
+  match left, right with
+  | nil, nil => True
+  | left_query :: left_program, right_query :: right_program =>
+      query_expr_possible_equiv env left_query right_query /\
+      query_program_possible_equiv env left_program right_program
+  | _, _ => False
+  end.
+
+Fixpoint query_program_possible_outcome_equiv
+    (env : Env.env T)
+    (left right : list (query_expr T relname)) : Prop :=
+  match left, right with
+  | nil, nil => True
+  | left_query :: left_program, right_query :: right_program =>
+      query_expr_possible_outcome_equiv env left_query right_query /\
+      query_program_possible_outcome_equiv env left_program right_program
+  | _, _ => False
+  end.
+
+Lemma query_program_possible_equiv_implies_possible_outcome_equiv :
+  forall env left right,
+    query_program_possible_equiv env left right ->
+    query_program_possible_outcome_equiv env left right.
+Proof.
+intros env left; induction left as [|left_query left_program IH];
+  intros [|right_query right_program] Hequiv; try contradiction; cbn in *.
+- exact I.
+- destruct Hequiv as [Hquery Hprogram].
+  split.
+  + now apply query_expr_possible_equiv_implies_possible_outcome_equiv.
+  + now apply IH.
+Qed.
+
+End PossibleSchedules.
 
 Arguments query_expr_outputs {T relname} _.
 Arguments query_expr_sort {T relname} _.

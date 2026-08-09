@@ -133,49 +133,6 @@ Definition eval_select_runtime_error
   | Select_As _ term _ => eval_aggterm_runtime_error env term
   end.
 
-Definition eval_select_list_runtime_error
-    (env : Env.env T) (items : _select_list T) : option sql_runtime_error :=
-  match items with
-  | _Select_List _ items =>
-      first_runtime_error (eval_select_runtime_error env) items
-  end.
-
-Definition eval_select_aggregate_runtime_error
-    (env : Env.env T) (item : select T) : option sql_runtime_error :=
-  match item with
-  | Select_As _ term _ => eval_aggterm_aggregate_runtime_error env term
-  end.
-
-Definition eval_select_list_aggregate_runtime_error
-    (env : Env.env T) (items : _select_list T) : option sql_runtime_error :=
-  match items with
-  | _Select_List _ items =>
-      first_runtime_error (eval_select_aggregate_runtime_error env) items
-  end.
-
-(** Finalize aggregate applications owned by this formula's query level.
-    Scalar formula/function nodes are traversed without invoking their own
-    callbacks, so a lazy CASE cannot hide an aggregate transition or final
-    error.  Relational subqueries are deliberately opaque here: their
-    aggregates belong to, and are checked by, their own query evaluation. *)
-Fixpoint eval_formula_aggregate_runtime_error {Q : Type}
-    (env : Env.env T) (sql_formula : @sql_formula T Q)
-    : option sql_runtime_error :=
-  match sql_formula with
-  | @Sql_Conj _ _ _ left_formula right_formula =>
-      first_error
-        (eval_formula_aggregate_runtime_error env left_formula)
-        (eval_formula_aggregate_runtime_error env right_formula)
-  | @Sql_Not _ _ inner => eval_formula_aggregate_runtime_error env inner
-  | @Sql_True _ _ => None
-  | @Sql_Pred _ _ _ args
-  | @Sql_Quant _ _ _ _ args _ =>
-      first_runtime_error (eval_aggterm_aggregate_runtime_error env) args
-  | @Sql_In _ _ items _ =>
-      first_runtime_error (eval_select_aggregate_runtime_error env) items
-  | @Sql_Exists _ _ _ => None
-  end.
-
 Fixpoint eval_formula_runtime_error {Q : Type}
     (eval_query_error : Env.env T -> Q -> option sql_runtime_error)
     (env : Env.env T)
