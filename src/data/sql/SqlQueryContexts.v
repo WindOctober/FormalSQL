@@ -161,6 +161,40 @@ intro query; split.
 - apply query_expr_global_outcome_equiv_refl.
 Qed.
 
+Lemma query_expr_global_outcome_equiv_sym :
+  forall left right,
+    query_expr_global_outcome_equiv left right ->
+    query_expr_global_outcome_equiv right left.
+Proof.
+intros left right Hequiv env outcome; symmetry; apply Hequiv.
+Qed.
+
+Lemma query_expr_global_cardinality_outcome_equiv_sym :
+  forall left right,
+    query_expr_global_cardinality_outcome_equiv left right ->
+    query_expr_global_cardinality_outcome_equiv right left.
+Proof.
+intros left right Hequiv env outcome; symmetry; apply Hequiv.
+Qed.
+
+Lemma query_expr_global_exists_outcome_equiv_sym :
+  forall left right,
+    query_expr_global_exists_outcome_equiv left right ->
+    query_expr_global_exists_outcome_equiv right left.
+Proof.
+intros left right Hequiv env outcome; symmetry; apply Hequiv.
+Qed.
+
+Lemma query_expr_global_typed_outcome_equiv_sym :
+  forall left right,
+    query_expr_global_typed_outcome_equiv left right ->
+    query_expr_global_typed_outcome_equiv right left.
+Proof.
+intros left right [Houtputs Hequiv]; split.
+- now symmetry.
+- now apply query_expr_global_outcome_equiv_sym.
+Qed.
+
 (** Scalar congruence is indexed by the result kind, so value and
     three-valued Boolean outcomes cannot be interchanged. *)
 Definition scalar_expr_global_outcome_equiv
@@ -306,6 +340,25 @@ Definition query_expr_global_demand_equiv
   | QueryContextRows => query_expr_global_typed_outcome_equiv left right
   | QueryContextExists => query_expr_global_exists_outcome_equiv left right
   end.
+
+Lemma query_expr_global_demand_equiv_refl :
+  forall demand query,
+    query_expr_global_demand_equiv demand query query.
+Proof.
+intros [|] query; cbn.
+- apply query_expr_global_typed_outcome_equiv_refl.
+- apply query_expr_global_exists_outcome_equiv_refl.
+Qed.
+
+Lemma query_expr_global_demand_equiv_sym :
+  forall demand left right,
+    query_expr_global_demand_equiv demand left right ->
+    query_expr_global_demand_equiv demand right left.
+Proof.
+intros [|] left right Hequiv; cbn in *.
+- now apply query_expr_global_typed_outcome_equiv_sym.
+- now apply query_expr_global_exists_outcome_equiv_sym.
+Qed.
 
 (** A result-kind-indexed scalar context contains exactly one query hole.
     Nested query paths are represented by composing this plug operation with

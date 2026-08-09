@@ -18,6 +18,22 @@ Open Scope Z_scope.
 Definition z_le_bool x y :=
   match Z.compare x y with Gt => false | _ => true end.
 
+Lemma z_le_bool_true_iff :
+  forall x y, z_le_bool x y = true <-> x <= y.
+Proof.
+intros x y; unfold z_le_bool.
+destruct (Z.compare_spec x y); split; intro Hb; try reflexivity;
+  try discriminate; lia.
+Qed.
+
+Lemma z_le_bool_false_iff :
+  forall x y, z_le_bool x y = false <-> y < x.
+Proof.
+intros x y; unfold z_le_bool.
+destruct (Z.compare_spec x y); split; intro Hb; try reflexivity;
+  try discriminate; lia.
+Qed.
+
 Definition is_leap_year y :=
   andb (Z.eqb (Z.modulo y 4) 0)
        (orb (negb (Z.eqb (Z.modulo y 100) 0))
@@ -43,6 +59,17 @@ Definition days_in_month y m :=
 Definition valid_ymd y m d :=
   andb (andb (z_le_bool 1 m) (z_le_bool m 12))
        (andb (z_le_bool 1 d) (z_le_bool d (days_in_month y m))).
+
+Lemma valid_ymd_true_iff :
+  forall y m d,
+    valid_ymd y m d = true <->
+    1 <= m <= 12 /\ 1 <= d <= days_in_month y m.
+Proof.
+intros y m d; unfold valid_ymd.
+repeat rewrite andb_true_iff.
+repeat rewrite z_le_bool_true_iff.
+reflexivity.
+Qed.
 
 Definition days_from_civil y m d :=
   let y := if z_le_bool m 2 then y - 1 else y in
@@ -72,6 +99,15 @@ Definition postgres_date_pos_infinity : Z := postgres_date_end.
 Definition date_in_range_bool (date : Z) : bool :=
   (postgres_date_min <=? date) && (date <? postgres_date_end).
 
+Lemma date_in_range_bool_true_iff :
+  forall date,
+    date_in_range_bool date = true <->
+    postgres_date_min <= date < postgres_date_end.
+Proof.
+intro date; unfold date_in_range_bool.
+rewrite andb_true_iff, Z.leb_le, Z.ltb_lt; reflexivity.
+Qed.
+
 Definition date_is_neg_infinity_bool (date : Z) : bool :=
   date =? postgres_date_neg_infinity.
 
@@ -81,8 +117,31 @@ Definition date_is_pos_infinity_bool (date : Z) : bool :=
 Definition date_is_infinity_bool (date : Z) : bool :=
   date_is_neg_infinity_bool date || date_is_pos_infinity_bool date.
 
+Lemma date_is_infinity_bool_true_iff :
+  forall date,
+    date_is_infinity_bool date = true <->
+    date = postgres_date_neg_infinity \/
+    date = postgres_date_pos_infinity.
+Proof.
+intro date; unfold date_is_infinity_bool, date_is_neg_infinity_bool,
+  date_is_pos_infinity_bool.
+rewrite orb_true_iff, Z.eqb_eq, Z.eqb_eq; reflexivity.
+Qed.
+
 Definition date_value_valid_bool (date : Z) : bool :=
   date_in_range_bool date || date_is_infinity_bool date.
+
+Lemma date_value_valid_bool_true_iff :
+  forall date,
+    date_value_valid_bool date = true <->
+    postgres_date_min <= date < postgres_date_end \/
+    date = postgres_date_neg_infinity \/
+    date = postgres_date_pos_infinity.
+Proof.
+intro date; unfold date_value_valid_bool.
+rewrite orb_true_iff, date_in_range_bool_true_iff,
+  date_is_infinity_bool_true_iff; reflexivity.
+Qed.
 
 Definition date_checked (date : Z) : option Z :=
   if date_in_range_bool date then Some date else None.
@@ -121,22 +180,12 @@ Theorem date_extract_month_days_from_civil :
     date_extract_month (days_from_civil y m d) = m.
 Proof.
 intros y m d Hvalid.
-assert (Hle : forall x z, z_le_bool x z = true <-> x <= z).
-{
-  intros x z; unfold z_le_bool.
-  destruct (Z.compare_spec x z); split; intro Hb; try reflexivity;
-    try discriminate; lia.
-}
-assert (Hnle : forall x z, z_le_bool x z = false <-> z < x).
-{
-  intros x z; unfold z_le_bool.
-  destruct (Z.compare_spec x z); split; intro Hb; try reflexivity;
-    try discriminate; lia.
-}
-unfold valid_ymd in Hvalid.
-repeat rewrite andb_true_iff in Hvalid.
+assert (Hle : forall x z, z_le_bool x z = true <-> x <= z)
+  by exact z_le_bool_true_iff.
+assert (Hnle : forall x z, z_le_bool x z = false <-> z < x)
+  by exact z_le_bool_false_iff.
+apply valid_ymd_true_iff in Hvalid.
 destruct Hvalid as [[Hmlo Hmhi] [Hdlo Hdhi]].
-rewrite Hle in Hmlo, Hmhi, Hdlo, Hdhi.
 
 assert (Hregular_year_of_era :
   forall yoe doy,
@@ -374,6 +423,15 @@ Definition timestamp_in_range_bool (timestamp : Z) : bool :=
   (postgres_timestamp_min <=? timestamp)
   && (timestamp <? postgres_timestamp_end).
 
+Lemma timestamp_in_range_bool_true_iff :
+  forall timestamp,
+    timestamp_in_range_bool timestamp = true <->
+    postgres_timestamp_min <= timestamp < postgres_timestamp_end.
+Proof.
+intro timestamp; unfold timestamp_in_range_bool.
+rewrite andb_true_iff, Z.leb_le, Z.ltb_lt; reflexivity.
+Qed.
+
 Definition timestamp_is_neg_infinity_bool (timestamp : Z) : bool :=
   timestamp =? postgres_timestamp_neg_infinity.
 
@@ -384,8 +442,31 @@ Definition timestamp_is_infinity_bool (timestamp : Z) : bool :=
   timestamp_is_neg_infinity_bool timestamp
   || timestamp_is_pos_infinity_bool timestamp.
 
+Lemma timestamp_is_infinity_bool_true_iff :
+  forall timestamp,
+    timestamp_is_infinity_bool timestamp = true <->
+    timestamp = postgres_timestamp_neg_infinity \/
+    timestamp = postgres_timestamp_pos_infinity.
+Proof.
+intro timestamp; unfold timestamp_is_infinity_bool,
+  timestamp_is_neg_infinity_bool, timestamp_is_pos_infinity_bool.
+rewrite orb_true_iff, Z.eqb_eq, Z.eqb_eq; reflexivity.
+Qed.
+
 Definition timestamp_value_valid_bool (timestamp : Z) : bool :=
   timestamp_in_range_bool timestamp || timestamp_is_infinity_bool timestamp.
+
+Lemma timestamp_value_valid_bool_true_iff :
+  forall timestamp,
+    timestamp_value_valid_bool timestamp = true <->
+    postgres_timestamp_min <= timestamp < postgres_timestamp_end \/
+    timestamp = postgres_timestamp_neg_infinity \/
+    timestamp = postgres_timestamp_pos_infinity.
+Proof.
+intro timestamp; unfold timestamp_value_valid_bool.
+rewrite orb_true_iff, timestamp_in_range_bool_true_iff,
+  timestamp_is_infinity_bool_true_iff; reflexivity.
+Qed.
 
 (** PostgreSQL stores finite TIMESTAMP/TIMESTAMPTZ values in microseconds and
     applies the declared precision when a value enters a typed column.  A
@@ -397,6 +478,15 @@ Definition timestamp_value_valid_bool (timestamp : Z) : bool :=
     half-second value that no PostgreSQL instance of that schema can contain. *)
 Definition timestamp_precision_valid_bool (precision : Z) : bool :=
   (0 <=? precision) && (precision <=? 6).
+
+Lemma timestamp_precision_valid_bool_true_iff :
+  forall precision,
+    timestamp_precision_valid_bool precision = true <->
+    0 <= precision <= 6.
+Proof.
+intro precision; unfold timestamp_precision_valid_bool.
+rewrite andb_true_iff, Z.leb_le, Z.leb_le; reflexivity.
+Qed.
 
 Definition timestamp_fits_precision_bool
     (timestamp precision : Z) : bool :=
@@ -416,6 +506,18 @@ Definition valid_time h m s micros :=
              (andb (andb (z_le_bool 0 s) (z_le_bool s 59))
                    (andb (z_le_bool 0 micros) (z_le_bool micros 999999)))).
 
+Lemma valid_time_true_iff :
+  forall h m s micros,
+    valid_time h m s micros = true <->
+    0 <= h <= 23 /\ 0 <= m <= 59 /\
+    0 <= s <= 59 /\ 0 <= micros <= 999999.
+Proof.
+intros h m s micros; unfold valid_time.
+repeat rewrite andb_true_iff.
+repeat rewrite z_le_bool_true_iff.
+reflexivity.
+Qed.
+
 Definition valid_day_time h m s micros :=
   orb (valid_time h m s micros)
       (andb (Z.eqb h 24)
@@ -431,6 +533,14 @@ Definition time_from_hms h minute s micros :=
 
 Definition time_in_range_bool (time : Z) : bool :=
   (0 <=? time) && (time <=? micros_per_day).
+
+Lemma time_in_range_bool_true_iff :
+  forall time,
+    time_in_range_bool time = true <-> 0 <= time <= micros_per_day.
+Proof.
+intro time; unfold time_in_range_bool.
+rewrite andb_true_iff, Z.leb_le, Z.leb_le; reflexivity.
+Qed.
 
 Definition timestamp_from_ymdhms y m d h minute s micros :=
   if andb (valid_ymd y m d) (valid_time h minute s micros)

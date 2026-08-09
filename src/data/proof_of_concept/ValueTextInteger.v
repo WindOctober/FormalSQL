@@ -167,3 +167,44 @@ Definition parse_text_int64 (input : string) : text_integer_result int64 :=
   | TextIntegerInvalid => TextIntegerInvalid
   | TextIntegerOutOfRange => TextIntegerOutOfRange
   end.
+
+(** Successful typed parsing factors through the generic magnitude parser and
+    the checked destination constructor.  These decomposition laws preserve
+    both the parsed mathematical integer and the fixed-width range check. *)
+Lemma parse_text_int32_value_iff : forall input result,
+  parse_text_int32 input = TextIntegerValue result <->
+  exists integer,
+    parse_text_integer_magnitude int32_min int32_max input =
+      TextIntegerValue integer /\
+    int32_checked integer = Some result.
+Proof.
+  intros input result; split.
+  - unfold parse_text_int32.
+    destruct (parse_text_integer_magnitude int32_min int32_max input)
+      as [integer | |] eqn:Hparse; try discriminate.
+    destruct (int32_checked integer) as [value |] eqn:Hchecked;
+      try discriminate.
+    intro Hvalue; inversion Hvalue; subst value.
+    exists integer; now split.
+  - intros [integer [Hparse Hchecked]].
+    unfold parse_text_int32; now rewrite Hparse, Hchecked.
+Qed.
+
+Lemma parse_text_int64_value_iff : forall input result,
+  parse_text_int64 input = TextIntegerValue result <->
+  exists integer,
+    parse_text_integer_magnitude int64_min int64_max input =
+      TextIntegerValue integer /\
+    int64_checked integer = Some result.
+Proof.
+  intros input result; split.
+  - unfold parse_text_int64.
+    destruct (parse_text_integer_magnitude int64_min int64_max input)
+      as [integer | |] eqn:Hparse; try discriminate.
+    destruct (int64_checked integer) as [value |] eqn:Hchecked;
+      try discriminate.
+    intro Hvalue; inversion Hvalue; subst value.
+    exists integer; now split.
+  - intros [integer [Hparse Hchecked]].
+    unfold parse_text_int64; now rewrite Hparse, Hchecked.
+Qed.

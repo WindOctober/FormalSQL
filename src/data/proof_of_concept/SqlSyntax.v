@@ -68,6 +68,20 @@ Fixpoint mk_att att atts vals :=
 Definition mk_tuple_lists atts vals :=
   mk_tuple TNull (Fset.mk_set _ atts) (fun att => mk_att att atts vals).
 
+Lemma mk_tuple_lists_labels : forall atts vals,
+  labels TNull (mk_tuple_lists atts vals) =S= Fset.mk_set _ atts.
+Proof.
+intros atts vals; unfold mk_tuple_lists; apply labels_mk_tuple.
+Qed.
+
+Lemma mk_tuple_lists_dot : forall atts vals att,
+  att inS Fset.mk_set (A TNull) atts ->
+  dot TNull (mk_tuple_lists atts vals) att = mk_att att atts vals.
+Proof.
+intros atts vals att Hatt.
+unfold mk_tuple_lists; rewrite dot_mk_tuple, Hatt; reflexivity.
+Qed.
+
 (**
   Database instances quantified by generated equivalence theorems must respect
   their declared SQL attributes.  In particular, a string payload cannot carry
@@ -122,11 +136,31 @@ Definition value_conforms_attribute (att : attribute) (val : value) : Prop :=
   | _, _ => False
   end.
 
+Lemma value_conforms_attribute_has_type : forall att val,
+  value_conforms_attribute att val ->
+  type_of_value TNull val = type_of_attribute att.
+Proof.
+intros att val Hconforms.
+destruct att; destruct val; cbn in Hconforms |- *;
+  try contradiction; reflexivity.
+Qed.
+
 Definition tuple_conforms_sort
     (sort : Fset.set (A TNull)) (row : tuple TNull) : Prop :=
   labels TNull row =S= sort /\
   forall att, att inS sort ->
     value_conforms_attribute att (dot TNull row att).
+
+Lemma tuple_conforms_sort_has_type : forall sort row,
+  tuple_conforms_sort sort row ->
+  forall att, att inS sort ->
+    type_of_value TNull (dot TNull row att) =
+    type_of_attribute att.
+Proof.
+intros sort row [_ Hconforms] att Hatt.
+apply value_conforms_attribute_has_type.
+now apply Hconforms.
+Qed.
 
 Definition database_values_conform (db : db_state) : Prop :=
   forall relation row,
@@ -135,6 +169,22 @@ Definition database_values_conform (db : db_state) : Prop :=
         (Fecol.CBag (CTuple TNull))
         (@_instance TNull db relation)) ->
     tuple_conforms_sort (@_basesort TNull db relation) row.
+
+Lemma database_values_conform_has_type : forall db relation row att,
+  database_values_conform db ->
+  In row
+    (Febag.elements
+      (Fecol.CBag (CTuple TNull))
+      (@_instance TNull db relation)) ->
+  att inS @_basesort TNull db relation ->
+  type_of_value TNull (dot TNull row att) =
+  type_of_attribute att.
+Proof.
+intros db relation row att Hdatabase Hrow Hatt.
+eapply tuple_conforms_sort_has_type.
+- exact (Hdatabase relation row Hrow).
+- exact Hatt.
+Qed.
 
 (** Again, for the constructs of the SQL framework *)
 Definition contains_nulls (t : tuple TNull) :=
@@ -175,4 +225,25 @@ rewrite <- (Fset.elements_spec1 _ _ _ (proj1 Ht)).
 apply existsb_eq.
 intros a Ha; rewrite <- (proj2 Ht); [apply refl_equal | ].
 apply Fset.in_elements_mem; assumption.
+Qed.
+
+Lemma contains_nulls_true_iff : forall t,
+  contains_nulls t = true <->
+  exists att,
+    att inS labels TNull t /\
+    NullValues.is_null_value (dot TNull t att) = true.
+Proof.
+intro t; unfold contains_nulls.
+change
+  (existsb
+    (fun att => NullValues.is_null_value (dot TNull t att))
+    ({{{labels TNull t}}}) = true <->
+   exists att,
+     att inS labels TNull t /\
+     NullValues.is_null_value (dot TNull t att) = true).
+rewrite existsb_exists; split.
+- intros [att [Hatt Hnull]].
+  exists att; split; [now apply Fset.in_elements_mem | exact Hnull].
+- intros [att [Hatt Hnull]].
+  exists att; split; [now apply Fset.mem_in_elements | exact Hnull].
 Qed.

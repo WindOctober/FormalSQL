@@ -515,6 +515,17 @@ Qed.
 
 End Sec.
 
+Lemma prop_forall_iff_Forall :
+  forall (A : Type) (predicate : A -> Prop) values,
+    prop_forall predicate values <-> Forall predicate values.
+Proof.
+intros A predicate values; induction values as [|value rest IH]; cbn.
+- split; intro; constructor.
+- rewrite IH; split.
+  + intros [Hvalue Hrest]; constructor; assumption.
+  + intro Hall; inversion Hall; subst; now split.
+Qed.
+
 Lemma prop_forall_firstn :
   forall (A : Type) (predicate : A -> Prop) count values,
     prop_forall predicate values ->

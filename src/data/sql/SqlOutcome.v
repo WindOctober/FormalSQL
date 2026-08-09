@@ -355,3 +355,141 @@ apply outcome_relation_equiv_intro.
   + contradiction (Hleft_safe error Herror).
   + contradiction (Hright_safe error Herror).
 Qed.
+
+(** Symmetry of the value relation lifts to safe relational observations.
+    The successful witness is transported explicitly, so the result does not
+    weaken the nonemptiness or runtime-safety requirements. *)
+Lemma successful_relation_equiv_symmetric :
+  forall (A : Type) (value_equiv : A -> A -> Prop),
+    (forall left right,
+      value_equiv left right -> value_equiv right left) ->
+    forall left right,
+      successful_relation_equiv value_equiv left right ->
+      successful_relation_equiv value_equiv right left.
+Proof.
+intros A value_equiv Hsym left right
+  [Hsuccess [Hleft_safe [Hright_safe [Hforward Hbackward]]]].
+apply successful_relation_equiv_intro.
+- destruct Hsuccess as [left_value Hleft].
+  destruct (Hforward left_value Hleft)
+    as [right_value [Hright _]].
+  now exists right_value.
+- exact Hright_safe.
+- exact Hleft_safe.
+- intros right_value Hright.
+  destruct (Hbackward right_value Hright)
+    as [left_value [Hleft Hequivalent]].
+  exists left_value; split; [exact Hleft |].
+  now apply Hsym.
+- intros left_value Hleft.
+  destruct (Hforward left_value Hleft)
+    as [right_value [Hright Hequivalent]].
+  exists right_value; split; [exact Hright |].
+  now apply Hsym.
+Qed.
+
+(** Transitivity composes the two bidirectional success matchings while
+    retaining the outer relations' safety certificates. *)
+Lemma successful_relation_equiv_transitive :
+  forall (A : Type) (value_equiv : A -> A -> Prop),
+    (forall left middle right,
+      value_equiv left middle -> value_equiv middle right ->
+      value_equiv left right) ->
+    forall first second third,
+      successful_relation_equiv value_equiv first second ->
+      successful_relation_equiv value_equiv second third ->
+      successful_relation_equiv value_equiv first third.
+Proof.
+intros A value_equiv Htrans first second third
+  [Hfirst_success [Hfirst_safe [_ [Hfirst_forward Hfirst_backward]]]]
+  [_ [_ [Hthird_safe [Hsecond_forward Hsecond_backward]]]].
+apply successful_relation_equiv_intro.
+- exact Hfirst_success.
+- exact Hfirst_safe.
+- exact Hthird_safe.
+- intros first_value Hfirst.
+  destruct (Hfirst_forward first_value Hfirst)
+    as [second_value [Hsecond Hfirst_second]].
+  destruct (Hsecond_forward second_value Hsecond)
+    as [third_value [Hthird Hsecond_third]].
+  exists third_value; split; [exact Hthird |].
+  eapply Htrans; eassumption.
+- intros third_value Hthird.
+  destruct (Hsecond_backward third_value Hthird)
+    as [second_value [Hsecond Hsecond_third]].
+  destruct (Hfirst_backward second_value Hsecond)
+    as [first_value [Hfirst Hfirst_second]].
+  exists first_value; split; [exact Hfirst |].
+  eapply Htrans; eassumption.
+Qed.
+
+(** Error-preserving relational equivalence is symmetric whenever semantic
+    value equality is symmetric.  Exact error categories are merely reversed
+    as an iff; they are never discarded. *)
+Lemma outcome_relation_equiv_symmetric :
+  forall (A : Type) (value_equiv : A -> A -> Prop),
+    (forall left right,
+      value_equiv left right -> value_equiv right left) ->
+    forall left right,
+      outcome_relation_equiv value_equiv left right ->
+      outcome_relation_equiv value_equiv right left.
+Proof.
+intros A value_equiv Hsym left right
+  [Hleft [Hright [Hforward [Hbackward Herrors]]]].
+apply outcome_relation_equiv_intro.
+- exact Hright.
+- exact Hleft.
+- intros right_value Hright_value.
+  destruct (Hbackward right_value Hright_value)
+    as [left_value [Hleft_value Hequivalent]].
+  exists left_value; split; [exact Hleft_value |].
+  now apply Hsym.
+- intros left_value Hleft_value.
+  destruct (Hforward left_value Hleft_value)
+    as [right_value [Hright_value Hequivalent]].
+  exists right_value; split; [exact Hright_value |].
+  now apply Hsym.
+- intro error; split; intro Herror.
+  + now apply (proj2 (Herrors error)).
+  + now apply (proj1 (Herrors error)).
+Qed.
+
+(** Error-preserving relational equivalence composes without choosing one
+    execution: successes are matched through the middle relation and each
+    exact error category is transported through both iff premises. *)
+Lemma outcome_relation_equiv_transitive :
+  forall (A : Type) (value_equiv : A -> A -> Prop),
+    (forall left middle right,
+      value_equiv left middle -> value_equiv middle right ->
+      value_equiv left right) ->
+    forall first second third,
+      outcome_relation_equiv value_equiv first second ->
+      outcome_relation_equiv value_equiv second third ->
+      outcome_relation_equiv value_equiv first third.
+Proof.
+intros A value_equiv Htrans first second third
+  [Hfirst [_ [Hfirst_forward [Hfirst_backward Hfirst_errors]]]]
+  [_ [Hthird [Hsecond_forward [Hsecond_backward Hsecond_errors]]]].
+apply outcome_relation_equiv_intro.
+- exact Hfirst.
+- exact Hthird.
+- intros first_value Hfirst_value.
+  destruct (Hfirst_forward first_value Hfirst_value)
+    as [second_value [Hsecond_value Hfirst_second]].
+  destruct (Hsecond_forward second_value Hsecond_value)
+    as [third_value [Hthird_value Hsecond_third]].
+  exists third_value; split; [exact Hthird_value |].
+  eapply Htrans; eassumption.
+- intros third_value Hthird_value.
+  destruct (Hsecond_backward third_value Hthird_value)
+    as [second_value [Hsecond_value Hsecond_third]].
+  destruct (Hfirst_backward second_value Hsecond_value)
+    as [first_value [Hfirst_value Hfirst_second]].
+  exists first_value; split; [exact Hfirst_value |].
+  eapply Htrans; eassumption.
+- intro error; split; intro Herror.
+  + apply (proj1 (Hsecond_errors error)).
+    now apply (proj1 (Hfirst_errors error)).
+  + apply (proj2 (Hfirst_errors error)).
+    now apply (proj2 (Hsecond_errors error)).
+Qed.

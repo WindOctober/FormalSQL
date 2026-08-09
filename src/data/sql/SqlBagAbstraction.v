@@ -99,6 +99,34 @@ intros first second third Hfirst Hsecond; unfold ordered_rows_equiv in *.
 eapply Oeset.compare_eq_trans; eassumption.
 Qed.
 
+(** The list comparator is exactly positional row equivalence.  Exposing the
+    standard [Forall2] view lets order-preserving list combinators transport
+    observations without unfolding [mk_oelists]. *)
+Lemma ordered_rows_equiv_iff_Forall2 :
+  forall left right,
+    ordered_rows_equiv left right <->
+    Forall2
+      (fun left_row right_row =>
+        Oeset.compare (OTuple T) left_row right_row = Eq)
+      left right.
+Proof.
+induction left as [|left_row left_rows IH];
+  intros [|right_row right_rows].
+- split; intro H; [constructor | apply ordered_rows_equiv_refl].
+- split; intro H.
+  + unfold ordered_rows_equiv, mk_oelists in H; discriminate.
+  + inversion H.
+- split; intro H.
+  + unfold ordered_rows_equiv, mk_oelists in H; discriminate.
+  + inversion H.
+- unfold ordered_rows_equiv, mk_oelists in *; cbn in *.
+  destruct (Oeset.compare (OTuple T) left_row right_row) eqn:Hrow;
+    try (split; intro H; [discriminate | inversion H; congruence]).
+  split.
+  + intro H; constructor; [exact Hrow | now apply (proj1 (IH right_rows))].
+  + intro H; inversion H; subst; now apply (proj2 (IH right_rows)).
+Qed.
+
 Lemma ordered_rows_equiv_implies_bag_eq :
   forall left right,
     ordered_rows_equiv left right ->

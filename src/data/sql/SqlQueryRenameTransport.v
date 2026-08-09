@@ -256,6 +256,22 @@ Definition query_outcome_rename_transport
   (forall error,
     left (SqlError error) <-> right (SqlError error)).
 
+Lemma query_outcome_rename_transport_identity :
+  forall outcomes,
+    query_outcome_rename_transport
+      (fun attribute => attribute) outcomes outcomes.
+Proof.
+intro outcomes; split.
+- intros rows Hrows; exists rows; split.
+  + exact Hrows.
+  + unfold query_rows_rename; apply rows_rename_sound_identity.
+- split.
+  + intros rows Hrows; exists rows; split.
+    * exact Hrows.
+    * unfold query_rows_rename; apply rows_rename_sound_identity.
+  + intro error; reflexivity.
+Qed.
+
 (** [environment_relation] is explicit because correlated subqueries cannot be
     transported soundly by evaluating renamed [F_Dot] references in the same
     old outer environment.  Callers may use closed [nil]/[nil] environments or
@@ -270,6 +286,38 @@ Definition query_rename_transport_under
     environment_relation left_env right_env ->
     query_outcome_rename_transport rho
       (eval_query left_env left) (eval_query right_env right).
+
+Lemma query_rename_schema_compatible_identity :
+  forall query,
+    @query_output_attributes_unique T (query_expr_outputs query) ->
+    @query_expr_admissible T relname basesort leaf_has_type call_has_type
+      predicate_has_types rank_type boolean_type value_is_null query ->
+    query_rename_schema_compatible
+      (fun attribute => attribute) query query.
+Proof.
+intros query Houtputs Hadmissible.
+unfold query_rename_schema_compatible.
+split; [exact Houtputs |].
+split; [exact Houtputs |].
+split; [apply map_id |].
+split; [apply attribute_rename_injective_on_identity |].
+split; [apply attribute_rename_type_preserving_on_identity |].
+now split.
+Qed.
+
+Lemma query_rename_transport_under_identity :
+  forall query,
+    @query_output_attributes_unique T (query_expr_outputs query) ->
+    @query_expr_admissible T relname basesort leaf_has_type call_has_type
+      predicate_has_types rank_type boolean_type value_is_null query ->
+    query_rename_transport_under eq
+      (fun attribute => attribute) query query.
+Proof.
+intros query Houtputs Hadmissible; split.
+- now apply query_rename_schema_compatible_identity.
+- intros left_env right_env Hequal; subst right_env.
+  apply query_outcome_rename_transport_identity.
+Qed.
 
 Definition query_closed_rename_transport
     (rho : attribute T -> attribute T)
@@ -1713,6 +1761,24 @@ Definition query_sort_keys_rename_compatible
     (rho : attribute T -> attribute T)
     (left right : list (sort_key T)) : Prop :=
   Forall2 (query_sort_key_rename_compatible rho) left right.
+
+Lemma query_sort_key_rename_compatible_identity :
+  forall key,
+    query_sort_key_rename_compatible
+      (fun attribute => attribute) key key.
+Proof.
+intro key; repeat split; reflexivity.
+Qed.
+
+Lemma query_sort_keys_rename_compatible_identity :
+  forall keys,
+    query_sort_keys_rename_compatible
+      (fun attribute => attribute) keys keys.
+Proof.
+intro keys; induction keys as [|key keys IH].
+- constructor.
+- constructor; [apply query_sort_key_rename_compatible_identity | exact IH].
+Qed.
 
 (** Projection compatibility covers every canonical typed selected-expression
     and output-alias pair, aggregate finalization, left-to-right error, and

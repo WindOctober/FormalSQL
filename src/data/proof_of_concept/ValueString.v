@@ -137,6 +137,24 @@ Fixpoint ascii_list_to_string (value : list ascii) : string :=
   | character :: rest => String character (ascii_list_to_string rest)
   end.
 
+Lemma string_to_ascii_list_to_string :
+  forall value,
+    ascii_list_to_string (string_to_ascii_list value) = value.
+Proof.
+intro value; induction value as [| character rest IH]; cbn.
+- reflexivity.
+- now rewrite IH.
+Qed.
+
+Lemma ascii_list_to_string_to_ascii_list :
+  forall value,
+    string_to_ascii_list (ascii_list_to_string value) = value.
+Proof.
+intro value; induction value as [| character rest IH]; cbn.
+- reflexivity.
+- now rewrite IH.
+Qed.
+
 Fixpoint drop_leading_spaces (value : list ascii) : list ascii :=
   match value with
   | nil => nil
@@ -267,6 +285,10 @@ Definition string_take (count : nat) (value : string) : string :=
   | None => value
   end.
 
+Lemma string_take_zero :
+  forall value, string_take O value = EmptyString.
+Proof. intros [| character rest]; reflexivity. Qed.
+
 Fixpoint string_drop_fuel
     (fuel count : nat) (value : string) : option string :=
   match count with
@@ -291,6 +313,10 @@ Definition string_drop (count : nat) (value : string) : string :=
   | Some result => result
   | None => value
   end.
+
+Lemma string_drop_zero :
+  forall value, string_drop O value = value.
+Proof. intros [| character rest]; reflexivity. Qed.
 
 Fixpoint string_all_spaces (value : string) : bool :=
   match value with
@@ -367,6 +393,25 @@ Definition ascii_is_percent (character : ascii) : bool :=
 
 Definition string_codepoint_eqb (left right : string) : bool :=
   match string_compare left right with Eq => true | Lt | Gt => false end.
+
+Lemma string_codepoint_eqb_true_iff :
+  forall left right,
+    string_codepoint_eqb left right = true <-> left = right.
+Proof.
+intros left right; unfold string_codepoint_eqb.
+change
+  ((match Oset.compare Ostring left right with
+    | Eq => true
+    | Lt | Gt => false
+    end) = true <-> left = right).
+destruct (Oset.compare Ostring left right) eqn:Hcompare; split; intro H.
+- now apply (proj1 (Oset.compare_eq_iff Ostring left right)).
+- reflexivity.
+- discriminate.
+- subst; rewrite Oset.compare_eq_refl in Hcompare; discriminate.
+- discriminate.
+- subst; rewrite Oset.compare_eq_refl in Hcompare; discriminate.
+Qed.
 
 Fixpoint string_like_percent_fuel
     (fuel : nat) (input pattern : string) : bool :=

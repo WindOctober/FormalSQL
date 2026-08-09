@@ -442,6 +442,22 @@ intros candidate sites; induction sites as [|site rest IH]; cbn.
   + exact (IH eq_refl Hin).
 Qed.
 
+Lemma boolean_site_mem_spec :
+  forall candidate sites,
+    boolean_site_mem candidate sites = true <->
+    In candidate sites.
+Proof.
+intros candidate sites; induction sites as [|site rest IH]; cbn.
+- split; [discriminate | contradiction].
+- destruct (String.eqb candidate site) eqn:Hhead; cbn.
+  + apply String.eqb_eq in Hhead; subst.
+    split; [now left | reflexivity].
+  + rewrite IH; split.
+    * intro Hin; now right.
+    * intros [Hequal | Hin]; [|exact Hin].
+      subst; now rewrite String.eqb_refl in Hhead.
+Qed.
+
 Lemma boolean_sites_well_formedb_sound :
   forall sites,
     boolean_sites_well_formedb sites = true ->
@@ -462,6 +478,41 @@ intro sites; induction sites as [|site rest IH]; cbn.
   + constructor.
     * intro Hequal; subst; now rewrite String.eqb_refl in Hnonempty.
     * exact (proj2 (IH Hrest)).
+Qed.
+
+Lemma boolean_sites_well_formedb_complete :
+  forall sites,
+    boolean_sites_well_formed sites ->
+    boolean_sites_well_formedb sites = true.
+Proof.
+intro sites; induction sites as [|site rest IH]; intro Hwell_formed; cbn.
+- reflexivity.
+- destruct Hwell_formed as [Hnodup Hnonempty].
+  inversion Hnodup as [|? ? Hfresh Hrest_nodup]; subst.
+  inversion Hnonempty as [|? ? Hsite Hrest_nonempty]; subst.
+  assert (Hnonemptyb : String.eqb site EmptyString = false).
+  {
+    destruct (String.eqb site EmptyString) eqn:Hequal; [|reflexivity].
+    apply String.eqb_eq in Hequal; contradiction.
+  }
+  assert (Hfreshb : boolean_site_mem site rest = false).
+  {
+    destruct (boolean_site_mem site rest) eqn:Hmember; [|reflexivity].
+    exfalso; apply Hfresh, (proj1 (boolean_site_mem_spec site rest)), Hmember.
+  }
+  assert (Hrest : boolean_sites_well_formedb rest = true).
+  { apply IH; split; assumption. }
+  now rewrite Hnonemptyb, Hfreshb, Hrest.
+Qed.
+
+Lemma boolean_sites_well_formedb_spec :
+  forall sites,
+    boolean_sites_well_formedb sites = true <->
+    boolean_sites_well_formed sites.
+Proof.
+intro sites; split.
+- apply boolean_sites_well_formedb_sound.
+- apply boolean_sites_well_formedb_complete.
 Qed.
 
 Definition query_expr_boolean_sites_well_formed

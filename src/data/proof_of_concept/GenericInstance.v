@@ -223,6 +223,58 @@ Definition create_table_
        end)
     (_instance db).
 
+Lemma relnames_init_db_ok :
+  _relnames init_db_ = nil.
+Proof.
+reflexivity.
+Qed.
+
+Lemma basesort_init_db_ok :
+  forall t, _basesort init_db_ t = Fset.empty (A T).
+Proof.
+intro t; reflexivity.
+Qed.
+
+Lemma instance_init_db_ok :
+  forall t, _instance init_db_ t = Febag.empty (Fecol.CBag (CTuple T)).
+Proof.
+intro t; reflexivity.
+Qed.
+
+Lemma relnames_create_table_ok :
+  forall db t st,
+    _relnames (create_table_ db t st) = t :: _relnames db.
+Proof.
+intros db t st; reflexivity.
+Qed.
+
+Lemma basesort_create_table_eq :
+  forall db t st,
+    _basesort (create_table_ db t st) t = Fset.mk_set (A T) st.
+Proof.
+intros db t st; unfold create_table_.
+cbn [_basesort].
+rewrite Oset.compare_eq_refl; reflexivity.
+Qed.
+
+Lemma basesort_create_table_neq :
+  forall db t st x,
+    x <> t ->
+    _basesort (create_table_ db t st) x = _basesort db x.
+Proof.
+intros db t st x Hneq; unfold create_table_.
+cbn [_basesort].
+destruct (Oset.compare ORN x t) eqn:Hcompare; try reflexivity.
+apply Oset.compare_eq_iff in Hcompare; contradiction.
+Qed.
+
+Lemma instance_create_table_ok :
+  forall db t st,
+    _instance (create_table_ db t st) = _instance db.
+Proof.
+intros db t st; reflexivity.
+Qed.
+
 End Sec.
 
 

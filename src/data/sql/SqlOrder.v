@@ -104,6 +104,23 @@ Fixpoint compare_order_keys
       end
   end.
 
+(** Appending key lists is lexicographic composition.  The exact comparison
+    from the suffix is consulted only when every prefix key ties, so this law
+    preserves direction, NULL placement, and tie information. *)
+Lemma compare_order_keys_app :
+  forall value_is_null first_keys second_keys left right,
+    compare_order_keys value_is_null (first_keys ++ second_keys) left right =
+    match compare_order_keys value_is_null first_keys left right with
+    | Eq => compare_order_keys value_is_null second_keys left right
+    | comparison => comparison
+    end.
+Proof.
+intros value_is_null first_keys; induction first_keys as [|key rest IH];
+  intros second_keys left right; simpl; [reflexivity |].
+destruct (compare_order_key value_is_null key left right);
+  simpl; [apply IH | reflexivity | reflexivity].
+Qed.
+
 Definition ordered_pair
     (value_is_null : value -> bool)
     (keys : list sort_key)

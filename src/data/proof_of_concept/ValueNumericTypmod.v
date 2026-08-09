@@ -50,3 +50,26 @@ Definition numeric_div_with_typmod
   | Some result => numeric_cast_typmod result precision scale
   | None => None
   end.
+
+Lemma numeric_div_with_typmod_none_iff :
+  forall left left_scale right right_scale precision scale,
+    numeric_div_with_typmod
+      left left_scale right right_scale precision scale = None <->
+    numeric_div_at_scales left left_scale right right_scale = None \/
+    exists quotient,
+      numeric_div_at_scales left left_scale right right_scale = Some quotient /\
+      numeric_cast_typmod quotient precision scale = None.
+Proof.
+  intros left left_scale right right_scale precision scale.
+  unfold numeric_div_with_typmod.
+  destruct (numeric_div_at_scales left left_scale right right_scale)
+    as [quotient|] eqn:Hdivision.
+  - split.
+    + intro Hcast; right; exists quotient; now split.
+    + intros [Hnone | [candidate [Hcandidate Hcast]]].
+      * discriminate.
+      * inversion Hcandidate; exact Hcast.
+  - split.
+    + intro; now left.
+    + reflexivity.
+Qed.

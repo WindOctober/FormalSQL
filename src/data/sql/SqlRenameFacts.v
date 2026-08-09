@@ -89,6 +89,28 @@ Proof.
 intros support source _; reflexivity.
 Qed.
 
+Lemma attribute_rename_sound_on_identity :
+  forall support,
+    attribute_rename_sound_on support (fun attribute => attribute).
+Proof.
+intro support; split.
+- apply attribute_rename_injective_on_identity.
+- apply attribute_rename_type_preserving_on_identity.
+Qed.
+
+Lemma attribute_rename_fresh_for_identity_iff :
+  forall support fresh,
+    attribute_rename_fresh_for
+      support (fun attribute => attribute) fresh <->
+    ~ fresh inS support.
+Proof.
+intros support fresh; split.
+- intros Hfresh Hmember.
+  exact (Hfresh fresh Hmember eq_refl).
+- intros Hfresh source Hsource Hequal.
+  apply Hfresh; now subst source.
+Qed.
+
 Lemma attribute_rename_map_identity :
   forall support,
     Fset.map (A T) (A T) (fun attribute => attribute) support =S= support.
@@ -157,6 +179,20 @@ rewrite Hsigma.
   exists source; split; [reflexivity | exact Hsource].
 Qed.
 
+Lemma attribute_rename_sound_on_compose :
+  forall rho sigma support,
+    attribute_rename_sound_on support rho ->
+    attribute_rename_sound_on
+      (Fset.map (A T) (A T) rho support) sigma ->
+    attribute_rename_sound_on support
+      (fun attribute => sigma (rho attribute)).
+Proof.
+intros rho sigma support [Hrho_injective Hrho_types]
+  [Hsigma_injective Hsigma_types]; split.
+- now apply attribute_rename_injective_on_compose.
+- now apply attribute_rename_type_preserving_on_compose.
+Qed.
+
 Lemma attribute_rename_collision_free_between_of_union :
   forall left right rho,
     attribute_rename_injective_on (left unionS right) rho ->
@@ -168,6 +204,18 @@ apply Hinjective.
 - rewrite Fset.mem_union, Hleft; reflexivity.
 - rewrite Fset.mem_union, Hright, Bool.orb_true_r; reflexivity.
 - exact Hequal.
+Qed.
+
+Lemma attribute_rename_collision_free_between_sym :
+  forall left right rho,
+    attribute_rename_collision_free_between left right rho ->
+    attribute_rename_collision_free_between right left rho.
+Proof.
+intros left right rho Hcollision right_attribute left_attribute
+  Hright Hleft Hequal.
+symmetry.
+apply (Hcollision left_attribute right_attribute);
+  [exact Hleft | exact Hright | now symmetry].
 Qed.
 
 Lemma attribute_rename_fresh_for_of_union_injective :
@@ -399,6 +447,14 @@ Definition rename_bag
     (rho : attribute T -> attribute T) (bag : bagT) : bagT :=
   Febag.map BTupleT BTupleT (rename_tuple T rho) bag.
 
+Lemma rename_rows_app :
+  forall rho left right,
+    rename_rows rho (left ++ right) =
+    rename_rows rho left ++ rename_rows rho right.
+Proof.
+intros rho left right; unfold rename_rows; apply map_app.
+Qed.
+
 (** Exact ordered transport: the list shape and position of every row are
     retained, while hidden tuple representations are compared extensionally. *)
 Definition rows_rename_equiv
@@ -438,6 +494,16 @@ Definition rows_rename_sound
   rows_rename_equiv rho left right /\
   rows_rename_collision_safe rho left /\
   rows_rename_type_safe rho left.
+
+Lemma rows_rename_equiv_app :
+  forall rho left left' right right',
+    rows_rename_equiv rho left left' ->
+    rows_rename_equiv rho right right' ->
+    rows_rename_equiv rho (left ++ right) (left' ++ right').
+Proof.
+intros rho left left' right right' Hleft Hright.
+unfold rows_rename_equiv in *; now apply Forall2_app.
+Qed.
 
 Lemma rows_rename_equiv_canonical :
   forall rho rows,

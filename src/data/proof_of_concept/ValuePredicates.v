@@ -61,6 +61,20 @@ Definition sql_bool_compare b1 b2 :=
   | true, false => Gt
   end.
 
+Lemma sql_bool_compare_refl :
+  forall value, sql_bool_compare value value = Eq.
+Proof.
+now intros [].
+Qed.
+
+Lemma sql_bool_compare_opposite :
+  forall left right,
+    sql_bool_compare left right =
+    CompOpp (sql_bool_compare right left).
+Proof.
+now intros [] [].
+Qed.
+
 Definition order_value_compare v1 v2 :=
   match integral_order_value v1, integral_order_value v2 with
   | Some z1, Some z2 => Some (Z.compare z1 z2)
@@ -90,6 +104,21 @@ Definition order_value_compare v1 v2 :=
       end
     end
   end.
+
+(** All three admitted integral carriers share the same mathematical ordering.
+    The [Some] premises retain both non-NULLness and membership in that family,
+    including mixed INTEGER/BIGINT comparisons. *)
+Lemma order_value_compare_integral :
+  forall left right left_integer right_integer,
+    integral_order_value left = Some left_integer ->
+    integral_order_value right = Some right_integer ->
+    order_value_compare left right =
+      Some (Z.compare left_integer right_integer).
+Proof.
+intros left right left_integer right_integer Hleft Hright.
+unfold order_value_compare.
+now rewrite Hleft, Hright.
+Qed.
 
 Definition interp_predicate p :=
   match p with

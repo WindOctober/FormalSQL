@@ -2191,10 +2191,38 @@ intros env left; induction left as [| left_query left_program IH];
   now rewrite (IH right_program Hprogram).
 Qed.
 
+Lemma query_program_outcome_equiv_length :
+  forall env left right,
+    query_program_outcome_equiv env left right ->
+    length left = length right.
+Proof.
+intros env left; induction left as [| left_query left_program IH];
+  intros [| right_query right_program] Hequiv; cbn in *; try contradiction.
+- reflexivity.
+- destruct Hequiv as [_ Hprogram].
+  now rewrite (IH right_program Hprogram).
+Qed.
+
 Theorem query_program_equiv_iff_Forall2 :
   forall env left right,
     query_program_equiv env left right <->
     Forall2 (query_expr_equiv env) left right.
+Proof.
+intros env left; induction left as [| left_query left_program IH];
+  intros [| right_query right_program]; cbn.
+- split; [intro; constructor | intro; exact I].
+- split; [contradiction | intro H; inversion H].
+- split; [contradiction | intro H; inversion H].
+- rewrite IH.
+  split.
+  + intros [Hquery Hprogram]. now constructor.
+  + intro H; inversion H; subst; now split.
+Qed.
+
+Theorem query_program_outcome_equiv_iff_Forall2 :
+  forall env left right,
+    query_program_outcome_equiv env left right <->
+    Forall2 (query_expr_outcome_equiv env) left right.
 Proof.
 intros env left; induction left as [| left_query left_program IH];
   intros [| right_query right_program]; cbn.

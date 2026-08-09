@@ -161,6 +161,42 @@ Fixpoint foreign_key_key_equal_true
   | _, _ => False
   end.
 
+(** A successful row-level referential-integrity comparison cannot silently
+    truncate either declared key. *)
+Lemma foreign_key_key_equal_true_length :
+  forall source_attributes referenced_attributes source_row referenced_row,
+    foreign_key_key_equal_true source_attributes referenced_attributes
+      source_row referenced_row ->
+    List.length source_attributes = List.length referenced_attributes.
+Proof.
+induction source_attributes as [|source_attribute source_rest IH];
+  intros [|referenced_attribute referenced_rest] source_row referenced_row
+    Hequal; cbn in Hequal |- *; try contradiction.
+- reflexivity.
+- destruct Hequal as [_ Hrest].
+  f_equal; now apply (IH referenced_rest source_row referenced_row).
+Qed.
+
+(** Every successful key comparison carries the declared operator-family
+    compatibility proof componentwise; no ordinary mixed-type equality is
+    substituted for referential-integrity equality. *)
+Lemma foreign_key_key_equal_true_compatible :
+  forall source_attributes referenced_attributes source_row referenced_row,
+    foreign_key_key_equal_true source_attributes referenced_attributes
+      source_row referenced_row ->
+    Forall2 foreign_key_attribute_compatible
+      source_attributes referenced_attributes.
+Proof.
+induction source_attributes as [|source_attribute source_rest IH];
+  intros [|referenced_attribute referenced_rest] source_row referenced_row
+    Hequal; cbn in Hequal; try contradiction.
+- constructor.
+- destruct Hequal as [[Hcompatible _] Hrest].
+  constructor.
+  + exact Hcompatible.
+  + now apply (IH referenced_rest source_row referenced_row).
+Qed.
+
 (** [NoDupA] observes every list occurrence.  Repeated NULL-bearing keys are
     admitted because PostgreSQL equality is UNKNOWN, not TRUE, for NULL. *)
 Definition unique_key_rows_conform

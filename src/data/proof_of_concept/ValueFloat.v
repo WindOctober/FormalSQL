@@ -48,11 +48,35 @@ Parameter float32_is_infinite : float32 -> bool.
 Parameter float64_is_infinite : float64 -> bool.
 Parameter float32_is_zero : float32 -> bool.
 Parameter float64_is_zero : float64 -> bool.
+Parameter float32_is_nan_true_iff : forall value,
+  float32_is_nan value = true <-> value = Float32NaN.
+Parameter float64_is_nan_true_iff : forall value,
+  float64_is_nan value = true <-> value = Float64NaN.
+Parameter float32_is_nan_mk : forall raw,
+  float32_is_nan (mk_float32 raw) = Binary.is_nan 24 128 raw.
+Parameter float64_is_nan_mk : forall raw,
+  float64_is_nan (mk_float64 raw) = Binary.is_nan 53 1024 raw.
+Parameter float32_is_infinite_nan :
+  float32_is_infinite Float32NaN = false.
+Parameter float64_is_infinite_nan :
+  float64_is_infinite Float64NaN = false.
 Parameter Ofloat32 : Oset.Rcd float32.
 Parameter Ofloat64 : Oset.Rcd float64.
 
 Parameter float32_compare : float32 -> float32 -> option comparison.
 Parameter float64_compare : float64 -> float64 -> option comparison.
+Parameter float32_compare_nan_left : forall value,
+  float32_compare Float32NaN value =
+    if float32_is_nan value then Some Eq else Some Gt.
+Parameter float32_compare_nan_right : forall value,
+  float32_compare value Float32NaN =
+    if float32_is_nan value then Some Eq else Some Lt.
+Parameter float64_compare_nan_left : forall value,
+  float64_compare Float64NaN value =
+    if float64_is_nan value then Some Eq else Some Gt.
+Parameter float64_compare_nan_right : forall value,
+  float64_compare value Float64NaN =
+    if float64_is_nan value then Some Eq else Some Lt.
 Parameter float32_eqb : float32 -> float32 -> bool.
 Parameter float64_eqb : float64 -> float64 -> bool.
 Parameter float32_ltb : float32 -> float32 -> bool.
@@ -81,6 +105,8 @@ Parameter float64_opp : float64 -> float64.
 Parameter float64_zero : float64.
 Parameter float64_of_Z : Z -> float64.
 Parameter float32_to_float64 : float32 -> float64.
+Parameter float32_to_float64_nan :
+  float32_to_float64 Float32NaN = Float64NaN.
 Parameter float64_max : float64 -> float64 -> float64.
 Parameter float64_min : float64 -> float64 -> float64.
 Parameter float32_average_order_sensitive :
@@ -210,6 +236,44 @@ Definition float32_is_zero (f : float32) : bool :=
 
 Definition float64_is_zero (f : float64) : bool :=
   raw_float64_is_zero (raw_float64_of f).
+
+Lemma float32_is_nan_true_iff : forall value,
+  float32_is_nan value = true <-> value = Float32NaN.
+Proof.
+intro value; destruct value; simpl; split; intro H;
+  try discriminate; reflexivity.
+Qed.
+
+Lemma float64_is_nan_true_iff : forall value,
+  float64_is_nan value = true <-> value = Float64NaN.
+Proof.
+intro value; destruct value; simpl; split; intro H;
+  try discriminate; reflexivity.
+Qed.
+
+Lemma float32_is_nan_mk : forall raw,
+  float32_is_nan (mk_float32 raw) = Binary.is_nan 24 128 raw.
+Proof.
+intro raw; unfold mk_float32, raw_float32_is_nan.
+destruct (Binary.is_nan 24 128 raw); [reflexivity |].
+now destruct (raw_float32_is_zero raw).
+Qed.
+
+Lemma float64_is_nan_mk : forall raw,
+  float64_is_nan (mk_float64 raw) = Binary.is_nan 53 1024 raw.
+Proof.
+intro raw; unfold mk_float64, raw_float64_is_nan.
+destruct (Binary.is_nan 53 1024 raw); [reflexivity |].
+now destruct (raw_float64_is_zero raw).
+Qed.
+
+Lemma float32_is_infinite_nan :
+  float32_is_infinite Float32NaN = false.
+Proof. reflexivity. Qed.
+
+Lemma float64_is_infinite_nan :
+  float64_is_infinite Float64NaN = false.
+Proof. reflexivity. Qed.
 
 Definition float32_negative_sign_bit : Z := 2147483648.
 Definition float64_negative_sign_bit : Z := 9223372036854775808.
@@ -364,6 +428,26 @@ Definition float64_compare (f1 f2 : float64) : option comparison :=
   | _, _ => b64_compare (raw_float64_of f1) (raw_float64_of f2)
   end.
 
+Lemma float32_compare_nan_left : forall value,
+  float32_compare Float32NaN value =
+    if float32_is_nan value then Some Eq else Some Gt.
+Proof. now intros [|bits]. Qed.
+
+Lemma float32_compare_nan_right : forall value,
+  float32_compare value Float32NaN =
+    if float32_is_nan value then Some Eq else Some Lt.
+Proof. now intros [|bits]. Qed.
+
+Lemma float64_compare_nan_left : forall value,
+  float64_compare Float64NaN value =
+    if float64_is_nan value then Some Eq else Some Gt.
+Proof. now intros [|bits]. Qed.
+
+Lemma float64_compare_nan_right : forall value,
+  float64_compare value Float64NaN =
+    if float64_is_nan value then Some Eq else Some Lt.
+Proof. now intros [|bits]. Qed.
+
 Definition float32_eqb f1 f2 :=
   match float32_compare f1 f2 with Some Eq => true | _ => false end.
 
@@ -461,6 +545,10 @@ Definition float32_to_float64 (f : float32) : float64 :=
           (if sign then Z.neg mantissa else Z.pos mantissa)
           exponent sign)
   end.
+
+Lemma float32_to_float64_nan :
+  float32_to_float64 Float32NaN = Float64NaN.
+Proof. vm_compute; reflexivity. Qed.
 
 Definition float64_max f1 f2 := if float64_ltb f1 f2 then f2 else f1.
 Definition float64_min f1 f2 := if float64_ltb f1 f2 then f1 else f2.

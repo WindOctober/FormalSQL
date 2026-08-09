@@ -615,42 +615,6 @@ replace (SqlSuccess nil) with
 - unfold filter_cons_outcome; now rewrite Hnontrue.
 Qed.
 
-(** Once an ordinary lower filter is empty, an outer filter succeeds empty
-    without any evaluation premise for its predicate. *)
-Lemma query_nested_filter_inner_empty_skips_outer :
-  forall env lower risky input,
-    eval_query_expr env (QExpr_Filter lower input) (SqlSuccess nil) ->
-    eval_query_expr env
-      (QExpr_Filter risky (QExpr_Filter lower input)) (SqlSuccess nil).
-Proof.
-intros env lower risky input Hinner.
-eapply EQuery_FilterRows with (input_rows := nil).
-- exact Hinner.
-- constructor.
-Qed.
-
-(** If the lower predicate is FALSE or UNKNOWN on the only row, logical
-    selection produces an empty input and the outer predicate is consequently
-    evaluated over no rows. *)
-Lemma query_nested_filter_nontrue_skips_outer :
-  forall env lower risky input row truth,
-    eval_query_expr env input (SqlSuccess (row :: nil)) ->
-    @eval_scalar_boolean_expr_outcome T relname basesort instance unknown
-      symbol_runtime_error aggregate_runtime_error value_is_null boolean_schedule
-      (env_t T env row) lower (SqlSuccess truth) ->
-    Bool.is_true (B T) truth = false ->
-    eval_query_expr env
-      (QExpr_Filter risky (QExpr_Filter lower input)) (SqlSuccess nil).
-Proof.
-intros env lower risky input row truth Hinput Hlower Hnontrue.
-eapply query_nested_filter_inner_empty_skips_outer.
-eapply EQuery_FilterRows with (input_rows := row :: nil).
-- exact Hinput.
-- eapply filter_rows_single_nontrue_success_empty.
-  + exact Hlower.
-  + exact Hnontrue.
-Qed.
-
 Lemma query_same_rows_as_bag_transport :
   forall first second bag,
     query_same_rows_as_bag first bag ->
@@ -2013,6 +1977,23 @@ intros env left right output; split.
   eapply EQuery_NaturalJoinSuccess; eassumption.
 Qed.
 
+(** Natural join evaluates its children left-to-right and has no
+    operator-local runtime error. *)
+Lemma eval_query_expr_natural_join_error_iff :
+  forall env left right error,
+    eval_query_expr env (QExpr_NaturalJoin left right) (SqlError error) <->
+    eval_query_expr env left (SqlError error) \/
+    exists left_rows,
+      eval_query_expr env left (SqlSuccess left_rows) /\
+      eval_query_expr env right (SqlError error).
+Proof.
+intros env left right error; split; intro Heval.
+- inversion Heval; subst; eauto.
+- destruct Heval as [Hleft | [left_rows [Hleft Hright]]].
+  + now apply EQuery_NaturalJoinLeftError.
+  + eapply EQuery_NaturalJoinRightError; eassumption.
+Qed.
+
 Lemma eval_query_expr_cross_join_success_iff :
   forall env left right output,
     eval_query_expr env (QExpr_CrossJoin left right) (SqlSuccess output) <->
@@ -2397,25 +2378,8 @@ apply query_unary_relational_reset_possible_bags.
 - apply query_window_bag_relation_extensional.
 Qed.
 
-Lemma query_set_lift_inputs_congr :
-  forall env operation left left' right right',
-    rel_equiv (query_success_bags env left)
-              (query_success_bags env left') ->
-    rel_equiv (query_success_bags env right)
-              (query_success_bags env right') ->
-    rel_equiv
-      (lift_possible_bag_binary
-        (query_set_bag_relation operation left right)
-        (query_success_bags env left) (query_success_bags env right))
-      (lift_possible_bag_binary
-        (query_set_bag_relation operation left right)
-        (query_success_bags env left') (query_success_bags env right')).
-Proof.
-intros; now apply lift_possible_bag_binary_congr.
-Qed.
-
-(** Packaged congruence for the actual [QExpr_Set] abstractions.  Unlike the
-    lower-level input congruence above, this theorem also transports the
+(** Packaged congruence for the actual [QExpr_Set] abstractions.  In addition
+    to generic lifted-input congruence, this theorem transports the
     syntax-indexed set-operation relation, whose schema check changes when the
     child syntax changes. *)
 Theorem query_set_success_bags_congr :
@@ -2437,8 +2401,8 @@ pose proof (query_set_success_bags env operation left right output_bag)
 pose proof (query_set_success_bags env operation left' right' output_bag)
   as Htarget.
 pose proof
-  (query_set_lift_inputs_congr (env := env) operation
-    (left := left) (left' := left') (right := right) (right' := right')
+  (lift_possible_bag_binary_congr
+    (query_set_bag_relation operation left right)
     Hleft Hright output_bag) as Hinputs.
 pose proof
   (lift_possible_bag_binary_operation_congr
@@ -2452,36 +2416,6 @@ split; intro Hresult.
     (proj1 Hsource), Hresult.
 - apply (proj2 Hsource), (proj2 Hinputs), (proj2 Hoperation),
     (proj1 Htarget), Hresult.
-Qed.
-
-Lemma query_distinct_success_bags_congr :
-  forall env left right,
-    rel_equiv (query_success_bags env left)
-              (query_success_bags env right) ->
-    rel_equiv
-      (lift_possible_bag_unary query_distinct_bag_relation
-        (query_success_bags env left))
-      (lift_possible_bag_unary query_distinct_bag_relation
-        (query_success_bags env right)).
-Proof.
-intros; now apply lift_possible_bag_unary_congr.
-Qed.
-
-Lemma query_rank_lift_success_bags_congr :
-  forall env partition_keys order_keys rank_attribute rank_value left right,
-    rel_equiv (query_success_bags env left)
-              (query_success_bags env right) ->
-    rel_equiv
-      (lift_possible_bag_unary
-        (query_rank_bag_relation
-          partition_keys order_keys rank_attribute rank_value)
-        (query_success_bags env left))
-      (lift_possible_bag_unary
-        (query_rank_bag_relation
-          partition_keys order_keys rank_attribute rank_value)
-        (query_success_bags env right)).
-Proof.
-intros; now apply lift_possible_bag_unary_congr.
 Qed.
 
 (** A native Rank reset consumes its child only through the possible-bag
@@ -2508,8 +2442,9 @@ pose proof
   (query_rank_success_bags env partition_keys order_keys
     rank_attribute rank_value right output_bag) as Hright.
 pose proof
-  (query_rank_lift_success_bags_congr
-    (env := env) partition_keys order_keys rank_attribute rank_value
+  (lift_possible_bag_unary_congr
+    (query_rank_bag_relation
+      partition_keys order_keys rank_attribute rank_value)
     Hinputs output_bag) as Hlift.
 split; intro Hresult.
 - apply (proj2 Hright), (proj1 Hlift), (proj1 Hleft), Hresult.
@@ -2574,36 +2509,6 @@ split; intro Hresult.
 - apply (proj2 Hleft), (proj2 Hlift), (proj1 Hright), Hresult.
 Qed.
 
-Lemma query_natural_join_success_bags_congr :
-  forall env left left' right right',
-    rel_equiv (query_success_bags env left)
-              (query_success_bags env left') ->
-    rel_equiv (query_success_bags env right)
-              (query_success_bags env right') ->
-    rel_equiv
-      (lift_possible_bag_binary query_natural_join_bag_relation
-        (query_success_bags env left) (query_success_bags env right))
-      (lift_possible_bag_binary query_natural_join_bag_relation
-        (query_success_bags env left') (query_success_bags env right')).
-Proof.
-intros; now apply lift_possible_bag_binary_congr.
-Qed.
-
-Lemma query_cross_join_success_bags_congr :
-  forall env left left' right right',
-    rel_equiv (query_success_bags env left)
-              (query_success_bags env left') ->
-    rel_equiv (query_success_bags env right)
-              (query_success_bags env right') ->
-    rel_equiv
-      (lift_possible_bag_binary query_cross_join_bag_relation
-        (query_success_bags env left) (query_success_bags env right))
-      (lift_possible_bag_binary query_cross_join_bag_relation
-        (query_success_bags env left') (query_success_bags env right')).
-Proof.
-intros; now apply lift_possible_bag_binary_congr.
-Qed.
-
 (** Packaged congruences for the actual reset-point queries.  These combine
     each exact success-bag characterization with the pointwise lifted bag
     congruence, so clients need not unfold the intermediate abstract term. *)
@@ -2619,7 +2524,8 @@ intros env left right Hinputs output_bag.
 pose proof (query_distinct_success_bags env left output_bag) as Hleft.
 pose proof (query_distinct_success_bags env right output_bag) as Hright.
 pose proof
-  (query_distinct_success_bags_congr (env := env) Hinputs output_bag)
+  (lift_possible_bag_unary_congr
+    query_distinct_bag_relation Hinputs output_bag)
   as Hlift.
 split; intro Hresult.
 - apply (proj2 Hright), (proj1 Hlift), (proj1 Hleft), Hresult.
@@ -2642,7 +2548,7 @@ pose proof
 pose proof
   (query_natural_join_success_bags env left' right' output_bag) as Htarget.
 pose proof
-  (query_natural_join_success_bags_congr (env := env)
+  (lift_possible_bag_binary_congr query_natural_join_bag_relation
     Hleft_inputs Hright_inputs output_bag) as Hlift.
 split; intro Hresult.
 - apply (proj2 Htarget), (proj1 Hlift), (proj1 Hsource), Hresult.
@@ -2665,7 +2571,7 @@ pose proof
 pose proof
   (query_cross_join_success_bags env left' right' output_bag) as Htarget.
 pose proof
-  (query_cross_join_success_bags_congr (env := env)
+  (lift_possible_bag_binary_congr query_cross_join_bag_relation
     Hleft_inputs Hright_inputs output_bag) as Hlift.
 split; intro Hresult.
 - apply (proj2 Htarget), (proj1 Hlift), (proj1 Hsource), Hresult.

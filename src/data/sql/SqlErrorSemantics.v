@@ -46,6 +46,17 @@ Definition first_error
   | None => right
   end.
 
+(** Left-biased error choice associates without changing which error is
+    observed first.  This supports regrouping recursive checks while
+    preserving their original evaluation order. *)
+Lemma first_error_associative :
+  forall first second third,
+    first_error (first_error first second) third =
+    first_error first (first_error second third).
+Proof.
+intros [error |] second third; reflexivity.
+Qed.
+
 Fixpoint first_runtime_error {A : Type}
     (check : A -> option sql_runtime_error)
     (values : list A) : option sql_runtime_error :=

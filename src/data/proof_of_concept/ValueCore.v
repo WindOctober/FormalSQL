@@ -182,7 +182,6 @@ Inductive scalar_operator : Type :=
   | ScalarNegate : scalar_numeric_kind -> scalar_operator
   | ScalarNumericDivideResultScale
   | ScalarNumericDivideTypmod
-  | ScalarPowerHalfInt64ToInt32
   | ScalarStringConcat
   | ScalarSubstringNonnegative
   | ScalarTimestampAdd : scalar_timestamp_unit -> scalar_operator.
