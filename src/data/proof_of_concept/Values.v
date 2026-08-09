@@ -1310,6 +1310,24 @@ Definition interp_cast_numeric_to_int32 l :=
   | _ => Value_int32 None
   end.
 
+(** Exact composite semantics for the deliberately narrow frontend rewrite
+    [CAST(POWER(bigint_expression, 0.5::numeric) AS integer)].  POWER first
+    rounds its nonnegative square root at PostgreSQL's selected NUMERIC result
+    scale; the explicit cast then rounds to an integer and checks int4 range. *)
+Definition power_half_int64_to_int32_checked (value : int64) : option int32 :=
+  match numeric_power_half_int64 (int64_value value) with
+  | Some powered => numeric_to_int32_checked powered
+  | None => None
+  end.
+
+Definition interp_power_half_int64_to_int32 l :=
+  match l with
+  | Value_int64 (Some value) :: nil =>
+      Value_int32 (power_half_int64_to_int32_checked value)
+  | Value_int64 None :: nil => Value_int32 None
+  | _ => Value_int32 None
+  end.
+
 (** PostgreSQL's string concatenation operators return [text].  Converting a
     CHARACTER operand to text removes its semantically insignificant trailing
     padding before concatenation; VARCHAR and text operands retain every
@@ -1488,6 +1506,7 @@ Definition interp_scalar_operator f :=
     | ScalarCast ScalarCastNumericToInt32 => interp_cast_numeric_to_int32
     | ScalarCast ScalarCastStringToInt32 => interp_cast_string_to_int32
     | ScalarCast ScalarCastStringToInt64 => interp_cast_string_to_int64
+    | ScalarPowerHalfInt64ToInt32 => interp_power_half_int64_to_int32
     | ScalarStringConcat => interp_string_concat
     | ScalarSubstringNonnegative => interp_substring_nonnegative
     | ScalarCast (ScalarCastToNumericTypmod ScalarSourceZ) =>
@@ -2162,6 +2181,18 @@ Definition scalar_operator_local_runtime_error
       cast_string_to_int32_runtime_error values
   | ScalarCast ScalarCastStringToInt64 =>
       cast_string_to_int64_runtime_error values
+  | ScalarPowerHalfInt64ToInt32 =>
+      match values with
+      | Value_int64 (Some value) :: nil =>
+          if int64_value value <? 0
+          then Some (DataException InvalidArgumentForPowerFunction)
+          else
+            match power_half_int64_to_int32_checked value with
+            | Some _ => None
+            | None => numeric_value_out_of_range
+            end
+      | _ => None
+      end
   | ScalarTimestampAdd ScalarTimestampMicrosecond =>
       timestamp_binary_runtime_error timestamp_add_microseconds_checked values
   | ScalarTimestampAdd ScalarTimestampSecond =>

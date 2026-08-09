@@ -396,6 +396,34 @@ Definition numeric_sqrt_at_scale
       Some (numeric_of_scaled rounded scale)
   end.
 
+(** PostgreSQL's [power(int8, 0.5::numeric)] resolves to the exact-NUMERIC
+    overload.  For a nonnegative signed BIGINT, [power_var] chooses a finite
+    result scale from the decimal weight of the input.  Retaining that scale
+    is necessary because a following NUMERIC-to-INTEGER cast observes the
+    rounded POWER result, rather than the underlying irrational square root. *)
+Definition numeric_power_half_int64_scale (base : Z) : Z :=
+  Z.min postgres_numeric_max_display_scale
+    (Z.max
+      (postgres_numeric_min_sig_digits -
+       (numeric_digit_count base - 1) / 2)
+      1).
+
+Definition numeric_power_half_int64 (base : Z) : option numeric :=
+  if base <? 0 then None
+  else numeric_sqrt_at_scale
+         (numeric_of_Z base) (numeric_power_half_int64_scale base).
+
+Lemma numeric_power_half_int64_scale_nonnegative base :
+  0 <= numeric_power_half_int64_scale base.
+Proof.
+  unfold numeric_power_half_int64_scale,
+    postgres_numeric_max_display_scale.
+  pose proof (Z.le_max_r
+    (postgres_numeric_min_sig_digits -
+     (numeric_digit_count base - 1) / 2) 1).
+  lia.
+Qed.
+
 (** Finalization shared by integral variance and standard-deviation
     aggregates.  The transition fields are exact mathematical count, sum,
     and sum of squares.  Final numeric arithmetic computes
