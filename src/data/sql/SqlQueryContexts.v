@@ -1665,6 +1665,12 @@ induction Heval.
 - constructor.
 - apply EJoinRowConditions_HeadError.
   now apply (proj1 (Hequiv _ _)).
+- eapply EJoinRowConditions_TailError.
+  + match goal with
+    | Hsource : eval_scalar_boolean _ _ (SqlSuccess _) |- _ =>
+        eapply (proj1 (Hequiv _ _)); exact Hsource
+    end.
+  + exact (IHHeval Hequiv).
 - eapply EJoinRowConditions_Cons.
   + now apply (proj1 (Hequiv _ _)).
   + exact (IHHeval Hequiv).
@@ -1697,6 +1703,14 @@ induction Heval.
 - apply EJoinConditions_RowError.
   now apply (proj1
     (eval_join_row_conditions_expression_global_congr Hequiv _ _ _ _)).
+- eapply EJoinConditions_TailError.
+  + match goal with
+    | Hsource : eval_join_row_conditions _ _ _ _ (SqlSuccess _) |- _ =>
+        eapply (proj1
+          (eval_join_row_conditions_expression_global_congr
+            Hequiv _ _ _ _)); exact Hsource
+    end.
+  + exact (IHHeval Hequiv).
 - eapply EJoinConditions_Cons.
   + now apply (proj1
       (eval_join_row_conditions_expression_global_congr Hequiv _ _ _ _)).

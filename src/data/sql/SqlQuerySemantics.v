@@ -1922,6 +1922,15 @@ with eval_join_row_conditions_outcome
           (SqlError error) ->
         eval_join_row_conditions_outcome env predicate left
           (right :: rights) (SqlError error)
+  | EJoinRowConditions_TailError :
+      forall predicate left right rights truth error,
+        eval_scalar_boolean_expr_outcome
+          (env_t T env (join_tuple T left right)) predicate
+          (SqlSuccess truth) ->
+        eval_join_row_conditions_outcome env predicate left rights
+          (SqlError error) ->
+        eval_join_row_conditions_outcome env predicate left
+          (right :: rights) (SqlError error)
   | EJoinRowConditions_Cons :
       forall predicate left right rights truth flags,
         eval_scalar_boolean_expr_outcome
@@ -1944,6 +1953,14 @@ with eval_join_conditions_outcome
   | EJoinConditions_RowError :
       forall predicate left lefts rights error,
         eval_join_row_conditions_outcome env predicate left rights
+          (SqlError error) ->
+        eval_join_conditions_outcome env predicate (left :: lefts) rights
+          (SqlError error)
+  | EJoinConditions_TailError :
+      forall predicate left lefts rights flags error,
+        eval_join_row_conditions_outcome env predicate left rights
+          (SqlSuccess flags) ->
+        eval_join_conditions_outcome env predicate lefts rights
           (SqlError error) ->
         eval_join_conditions_outcome env predicate (left :: lefts) rights
           (SqlError error)

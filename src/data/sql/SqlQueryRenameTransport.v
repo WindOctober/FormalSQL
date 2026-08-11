@@ -379,18 +379,20 @@ Inductive query_binary_outcome_lift
         local left_rows right_rows outcome ->
         query_binary_outcome_lift left_child right_child local outcome.
 
-Lemma query_unary_outcome_lift_transport :
-  forall rho left_child right_child left_local right_local,
-    query_outcome_rename_transport rho left_child right_child ->
+(** Heterogeneous scope form: child observations and parent observations may
+    use different rename maps. *)
+Lemma query_unary_outcome_lift_scoped_transport :
+  forall inner_rho outer_rho left_child right_child left_local right_local,
+    query_outcome_rename_transport inner_rho left_child right_child ->
     (forall left_rows right_rows,
-      query_rows_rename rho left_rows right_rows ->
-      query_outcome_rename_transport rho
+      query_rows_rename inner_rho left_rows right_rows ->
+      query_outcome_rename_transport outer_rho
         (left_local left_rows) (right_local right_rows)) ->
-    query_outcome_rename_transport rho
+    query_outcome_rename_transport outer_rho
       (query_unary_outcome_lift left_child left_local)
       (query_unary_outcome_lift right_child right_local).
 Proof.
-intros rho left_child right_child left_local right_local
+intros inner_rho outer_rho left_child right_child left_local right_local
   [Hchild_forward [Hchild_backward Hchild_errors]] Hlocal.
 split.
 - intros left_rows Hleft; inversion Hleft; subst.
@@ -421,6 +423,22 @@ split.
       exact (proj2 ((proj2 (proj2 (Hlocal _ _ Hrenamed))) error) H0).
 Qed.
 
+Lemma query_unary_outcome_lift_transport :
+  forall rho left_child right_child left_local right_local,
+    query_outcome_rename_transport rho left_child right_child ->
+    (forall left_rows right_rows,
+      query_rows_rename rho left_rows right_rows ->
+      query_outcome_rename_transport rho
+        (left_local left_rows) (right_local right_rows)) ->
+    query_outcome_rename_transport rho
+      (query_unary_outcome_lift left_child left_local)
+      (query_unary_outcome_lift right_child right_local).
+Proof.
+intros rho left_child right_child left_local right_local
+  Hchild Hlocal.
+eapply query_unary_outcome_lift_scoped_transport; eassumption.
+Qed.
+
 Lemma query_binary_outcome_lift_error_iff :
   forall left_child right_child local error,
     query_binary_outcome_lift left_child right_child local
@@ -449,22 +467,26 @@ intros left_child right_child local error; split; intro Herror.
       (left_rows := left_rows) (right_rows := right_rows).
 Qed.
 
-Lemma query_binary_outcome_lift_transport :
-  forall rho left_child left_child' right_child right_child'
+(** Binary heterogeneous scope form.  Left and right children may come from
+    independent scopes and the parent may introduce a third output scope. *)
+Lemma query_binary_outcome_lift_scoped_transport :
+  forall left_rho right_rho outer_rho
+      left_child left_child' right_child right_child'
       left_local right_local,
-    query_outcome_rename_transport rho left_child left_child' ->
-    query_outcome_rename_transport rho right_child right_child' ->
+    query_outcome_rename_transport left_rho left_child left_child' ->
+    query_outcome_rename_transport right_rho right_child right_child' ->
     (forall left_rows left_rows' right_rows right_rows',
-      query_rows_rename rho left_rows left_rows' ->
-      query_rows_rename rho right_rows right_rows' ->
-      query_outcome_rename_transport rho
+      query_rows_rename left_rho left_rows left_rows' ->
+      query_rows_rename right_rho right_rows right_rows' ->
+      query_outcome_rename_transport outer_rho
         (left_local left_rows right_rows)
         (right_local left_rows' right_rows')) ->
-    query_outcome_rename_transport rho
+    query_outcome_rename_transport outer_rho
       (query_binary_outcome_lift left_child right_child left_local)
       (query_binary_outcome_lift left_child' right_child' right_local).
 Proof.
-intros rho left_child left_child' right_child right_child'
+intros left_rho right_rho outer_rho
+  left_child left_child' right_child right_child'
   left_local right_local
   [Hleft_forward [Hleft_backward Hleft_errors]]
   [Hright_forward [Hright_backward Hright_errors]] Hlocal.
@@ -525,6 +547,26 @@ split.
          exists left_rows, right_rows; repeat split; try assumption.
          exact (proj2 ((proj2 (proj2
            (Hlocal _ _ _ _ Hleft_rows Hright_rows))) error) Hlocal_error).
+Qed.
+
+Lemma query_binary_outcome_lift_transport :
+  forall rho left_child left_child' right_child right_child'
+      left_local right_local,
+    query_outcome_rename_transport rho left_child left_child' ->
+    query_outcome_rename_transport rho right_child right_child' ->
+    (forall left_rows left_rows' right_rows right_rows',
+      query_rows_rename rho left_rows left_rows' ->
+      query_rows_rename rho right_rows right_rows' ->
+      query_outcome_rename_transport rho
+        (left_local left_rows right_rows)
+        (right_local left_rows' right_rows')) ->
+    query_outcome_rename_transport rho
+      (query_binary_outcome_lift left_child right_child left_local)
+      (query_binary_outcome_lift left_child' right_child' right_local).
+Proof.
+intros rho left_child left_child' right_child right_child'
+  left_local right_local Hleft Hright Hlocal.
+eapply query_binary_outcome_lift_scoped_transport; eassumption.
 Qed.
 
 Lemma query_outcome_rename_transport_congr :
@@ -640,6 +682,148 @@ eapply query_outcome_rename_transport_congr.
   + intros left_rows left_rows' right_rows right_rows' Hleft_rows Hright_rows.
     exact (Hlocal _ _ _ _ _ _ Henvironment Hleft_rows Hright_rows).
 Qed.
+
+(** A schema-producing unary operator crosses two distinct SQL scopes.  The
+    child rows are related by [inner_rho], while the parent result is related
+    by [outer_rho].  Existing same-map transport is the special case where the
+    two maps and environment relations coincide. *)
+Definition query_unary_local_scoped_rename_compatible
+    (outer_environment_relation : Env.env T -> Env.env T -> Prop)
+    (inner_rho outer_rho : attribute T -> attribute T)
+    (left_local right_local :
+      Env.env T -> list tuple -> sql_outcome (list tuple) -> Prop) : Prop :=
+  forall left_env right_env left_rows right_rows,
+    outer_environment_relation left_env right_env ->
+    query_rows_rename inner_rho left_rows right_rows ->
+    query_outcome_rename_transport outer_rho
+      (left_local left_env left_rows)
+      (right_local right_env right_rows).
+
+Definition query_binary_local_scoped_rename_compatible
+    (outer_environment_relation : Env.env T -> Env.env T -> Prop)
+    (left_rho right_rho outer_rho : attribute T -> attribute T)
+    (left_local right_local :
+      Env.env T -> list tuple -> list tuple ->
+      sql_outcome (list tuple) -> Prop) : Prop :=
+  forall left_env right_env
+      left_rows left_rows' right_rows right_rows',
+    outer_environment_relation left_env right_env ->
+    query_rows_rename left_rho left_rows left_rows' ->
+    query_rows_rename right_rho right_rows right_rows' ->
+    query_outcome_rename_transport outer_rho
+      (left_local left_env left_rows right_rows)
+      (right_local right_env left_rows' right_rows').
+
+Theorem query_unary_constructor_scoped_rename_transport :
+  forall inner_environment_relation outer_environment_relation
+      inner_rho outer_rho child child' outer outer'
+      left_local right_local,
+    (forall left_env right_env,
+      outer_environment_relation left_env right_env ->
+      inner_environment_relation left_env right_env) ->
+    query_rename_schema_compatible outer_rho outer outer' ->
+    query_rename_transport_under
+      inner_environment_relation inner_rho child child' ->
+    query_unary_local_scoped_rename_compatible
+      outer_environment_relation inner_rho outer_rho
+      left_local right_local ->
+    (forall env outcome,
+      eval_query env outer outcome <->
+      query_unary_outcome_lift
+        (eval_query env child) (left_local env) outcome) ->
+    (forall env outcome,
+      eval_query env outer' outcome <->
+      query_unary_outcome_lift
+        (eval_query env child') (right_local env) outcome) ->
+    query_rename_transport_under
+      outer_environment_relation outer_rho outer outer'.
+Proof.
+intros inner_environment_relation outer_environment_relation
+  inner_rho outer_rho child child' outer outer'
+  left_local right_local Henvironments Hschema [_ Hchild]
+  Hlocal Hleft_eval Hright_eval.
+split; [exact Hschema|].
+intros left_env right_env Houter_environment.
+eapply query_outcome_rename_transport_congr.
+- intro outcome; symmetry; apply Hleft_eval.
+- intro outcome; symmetry; apply Hright_eval.
+- eapply query_unary_outcome_lift_scoped_transport.
+  + exact (Hchild _ _
+      (Henvironments left_env right_env Houter_environment)).
+  + intros left_rows right_rows Hrows.
+    exact (Hlocal _ _ _ _ Houter_environment Hrows).
+Qed.
+
+Theorem query_binary_constructor_scoped_rename_transport :
+  forall left_environment_relation right_environment_relation
+      outer_environment_relation left_rho right_rho outer_rho
+      left left' right right' outer outer' left_local right_local,
+    (forall left_env right_env,
+      outer_environment_relation left_env right_env ->
+      left_environment_relation left_env right_env) ->
+    (forall left_env right_env,
+      outer_environment_relation left_env right_env ->
+      right_environment_relation left_env right_env) ->
+    query_rename_schema_compatible outer_rho outer outer' ->
+    query_rename_transport_under left_environment_relation
+      left_rho left left' ->
+    query_rename_transport_under right_environment_relation
+      right_rho right right' ->
+    query_binary_local_scoped_rename_compatible
+      outer_environment_relation left_rho right_rho outer_rho
+      left_local right_local ->
+    (forall env outcome,
+      eval_query env outer outcome <->
+      query_binary_outcome_lift
+        (eval_query env left) (eval_query env right)
+        (left_local env) outcome) ->
+    (forall env outcome,
+      eval_query env outer' outcome <->
+      query_binary_outcome_lift
+        (eval_query env left') (eval_query env right')
+        (right_local env) outcome) ->
+    query_rename_transport_under
+      outer_environment_relation outer_rho outer outer'.
+Proof.
+intros left_environment_relation right_environment_relation
+  outer_environment_relation left_rho right_rho outer_rho
+  left left' right right' outer outer' left_local right_local
+  Hleft_environment Hright_environment Hschema [_ Hleft] [_ Hright]
+  Hlocal Hleft_eval Hright_eval.
+split; [exact Hschema|].
+intros left_env right_env Houter_environment.
+eapply query_outcome_rename_transport_congr.
+- intro outcome; symmetry; apply Hleft_eval.
+- intro outcome; symmetry; apply Hright_eval.
+- eapply query_binary_outcome_lift_scoped_transport.
+  + exact (Hleft _ _
+      (Hleft_environment left_env right_env Houter_environment)).
+  + exact (Hright _ _
+      (Hright_environment left_env right_env Houter_environment)).
+  + intros left_rows left_rows' right_rows right_rows'
+      Hleft_rows Hright_rows.
+    exact (Hlocal _ _ _ _ _ _ Houter_environment
+      Hleft_rows Hright_rows).
+Qed.
+
+(** Same-scope local contracts embed into the scoped interfaces.  These
+    lemmas make the existing constructor theorems genuine corollaries of the
+    heterogeneous core without changing their public statements. *)
+Lemma query_unary_local_rename_compatible_scoped :
+  forall environment_relation rho left_local right_local,
+    query_unary_local_rename_compatible
+      environment_relation rho left_local right_local ->
+    query_unary_local_scoped_rename_compatible
+      environment_relation rho rho left_local right_local.
+Proof. intros; exact H. Qed.
+
+Lemma query_binary_local_rename_compatible_scoped :
+  forall environment_relation rho left_local right_local,
+    query_binary_local_rename_compatible
+      environment_relation rho left_local right_local ->
+    query_binary_local_scoped_rename_compatible
+      environment_relation rho rho rho left_local right_local.
+Proof. intros; exact H. Qed.
 
 (** Constructor-local semantics.  These relations expose exactly the metadata
     that must be transported together.  Proving a local compatibility premise
@@ -1360,8 +1544,69 @@ eapply query_binary_constructor_rename_transport with
     left_matched left_left_select left_right_select)
   (right_local := fun env => query_join_local env kind right_predicate
     right_matched right_left_select right_right_select);
-  try eassumption;
-  intros env outcome; apply eval_query_join_binary_lift_iff.
+  try eassumption.
+- intros env outcome; apply eval_query_join_binary_lift_iff.
+- intros env outcome; apply eval_query_join_binary_lift_iff.
+Qed.
+
+(** A JOIN is a scope merge: its left input, right input, and projected output
+    may each use a different alpha-renaming map.  The local contract is where
+    condition references, NULL/Bool3 behavior, branch projections, and output
+    aliases are related across those three scopes. *)
+Theorem QExpr_Join_scoped_rename_transport :
+  forall left_environment_relation right_environment_relation
+      outer_environment_relation left_rho right_rho outer_rho kind
+      left_predicate right_predicate
+      left_matched left_left_select left_right_select
+      right_matched right_left_select right_right_select
+      left left' right right',
+    (forall left_env right_env,
+      outer_environment_relation left_env right_env ->
+      left_environment_relation left_env right_env) ->
+    (forall left_env right_env,
+      outer_environment_relation left_env right_env ->
+      right_environment_relation left_env right_env) ->
+    query_rename_schema_compatible outer_rho
+      (QExpr_Join kind left_predicate
+        left_matched left_left_select left_right_select left right)
+      (QExpr_Join kind right_predicate
+        right_matched right_left_select right_right_select left' right') ->
+    query_rename_transport_under
+      left_environment_relation left_rho left left' ->
+    query_rename_transport_under
+      right_environment_relation right_rho right right' ->
+    query_binary_local_scoped_rename_compatible
+      outer_environment_relation left_rho right_rho outer_rho
+      (fun env => query_join_local env kind left_predicate
+        left_matched left_left_select left_right_select)
+      (fun env => query_join_local env kind right_predicate
+        right_matched right_left_select right_right_select) ->
+    query_rename_transport_under outer_environment_relation outer_rho
+      (QExpr_Join kind left_predicate
+        left_matched left_left_select left_right_select left right)
+      (QExpr_Join kind right_predicate
+        right_matched right_left_select right_right_select left' right').
+Proof.
+intros left_environment_relation right_environment_relation
+  outer_environment_relation left_rho right_rho outer_rho kind
+  left_predicate right_predicate
+  left_matched left_left_select left_right_select
+  right_matched right_left_select right_right_select
+  left left' right right' Hleft_environment Hright_environment
+  Hschema Hleft Hright Hlocal.
+eapply query_binary_constructor_scoped_rename_transport with
+  (left_environment_relation := left_environment_relation)
+  (right_environment_relation := right_environment_relation)
+  (outer_environment_relation := outer_environment_relation)
+  (left_rho := left_rho) (right_rho := right_rho)
+  (outer_rho := outer_rho)
+  (left := left) (left' := left') (right := right) (right' := right')
+  (left_local := fun env => query_join_local env kind left_predicate
+    left_matched left_left_select left_right_select)
+  (right_local := fun env => query_join_local env kind right_predicate
+    right_matched right_left_select right_right_select);
+  try eassumption.
+all: intros current_env outcome; apply eval_query_join_binary_lift_iff.
 Qed.
 
 Lemma eval_query_project_unary_lift_iff :
@@ -1803,7 +2048,45 @@ eapply query_unary_constructor_rename_transport with
   (child := input) (child' := input')
   (left_local := fun env => query_project_local env left_select)
   (right_local := fun env => query_project_local env right_select);
-  try eassumption; intros env outcome; apply eval_query_project_unary_lift_iff.
+  try eassumption.
+- intros env outcome; apply eval_query_project_unary_lift_iff.
+- intros env outcome; apply eval_query_project_unary_lift_iff.
+Qed.
+
+(** PROJECT closes one input scope and creates a new output-alias scope.
+    [inner_rho] transports referenced input columns; [outer_rho] transports
+    the selected aliases visible to the enclosing query. *)
+Theorem QExpr_Project_scoped_rename_transport :
+  forall inner_environment_relation outer_environment_relation
+      inner_rho outer_rho left_select right_select input input',
+    (forall left_env right_env,
+      outer_environment_relation left_env right_env ->
+      inner_environment_relation left_env right_env) ->
+    query_rename_schema_compatible outer_rho
+      (QExpr_Project left_select input)
+      (QExpr_Project right_select input') ->
+    query_rename_transport_under
+      inner_environment_relation inner_rho input input' ->
+    query_unary_local_scoped_rename_compatible
+      outer_environment_relation inner_rho outer_rho
+      (fun env => query_project_local env left_select)
+      (fun env => query_project_local env right_select) ->
+    query_rename_transport_under outer_environment_relation outer_rho
+      (QExpr_Project left_select input)
+      (QExpr_Project right_select input').
+Proof.
+intros inner_environment_relation outer_environment_relation
+  inner_rho outer_rho left_select right_select input input'
+  Henvironments Hschema Hinput Hlocal.
+eapply query_unary_constructor_scoped_rename_transport with
+  (inner_environment_relation := inner_environment_relation)
+  (outer_environment_relation := outer_environment_relation)
+  (inner_rho := inner_rho) (outer_rho := outer_rho)
+  (child := input) (child' := input')
+  (left_local := fun env => query_project_local env left_select)
+  (right_local := fun env => query_project_local env right_select);
+  try eassumption.
+all: intros current_env outcome; apply eval_query_project_unary_lift_iff.
 Qed.
 
 (** [QExpr_RowMap] is intentionally opaque, but a pointwise callback proof is
@@ -1900,7 +2183,49 @@ eapply query_unary_constructor_rename_transport with
     query_group_local env left_select left_keys left_having)
   (right_local := fun env =>
     query_group_local env right_select right_keys right_having);
-  try eassumption; intros env outcome; apply eval_query_group_unary_lift_iff.
+  try eassumption.
+- intros env outcome; apply eval_query_group_unary_lift_iff.
+- intros env outcome; apply eval_query_group_unary_lift_iff.
+Qed.
+
+(** GROUP is another scope boundary: child rows use [inner_rho], while group
+    keys, aggregates, HAVING, selected aliases, and the final grouped rows are
+    certified by the local contract and exposed under [outer_rho]. *)
+Theorem QExpr_Group_scoped_rename_transport :
+  forall inner_environment_relation outer_environment_relation
+      inner_rho outer_rho left_select right_select
+      left_keys right_keys left_having right_having input input',
+    (forall left_env right_env,
+      outer_environment_relation left_env right_env ->
+      inner_environment_relation left_env right_env) ->
+    query_rename_schema_compatible outer_rho
+      (QExpr_Group left_select left_keys left_having input)
+      (QExpr_Group right_select right_keys right_having input') ->
+    query_rename_transport_under
+      inner_environment_relation inner_rho input input' ->
+    query_unary_local_scoped_rename_compatible
+      outer_environment_relation inner_rho outer_rho
+      (fun env => query_group_local env left_select left_keys left_having)
+      (fun env => query_group_local env right_select right_keys right_having) ->
+    query_rename_transport_under outer_environment_relation outer_rho
+      (QExpr_Group left_select left_keys left_having input)
+      (QExpr_Group right_select right_keys right_having input').
+Proof.
+intros inner_environment_relation outer_environment_relation
+  inner_rho outer_rho left_select right_select left_keys right_keys
+  left_having right_having input input'
+  Henvironments Hschema Hinput Hlocal.
+eapply query_unary_constructor_scoped_rename_transport with
+  (inner_environment_relation := inner_environment_relation)
+  (outer_environment_relation := outer_environment_relation)
+  (inner_rho := inner_rho) (outer_rho := outer_rho)
+  (child := input) (child' := input')
+  (left_local := fun env =>
+    query_group_local env left_select left_keys left_having)
+  (right_local := fun env =>
+    query_group_local env right_select right_keys right_having);
+  try eassumption.
+all: intros current_env outcome; apply eval_query_group_unary_lift_iff.
 Qed.
 
 (** Every grouping-set branch must be transformed; well-formedness retains a
@@ -2272,6 +2597,143 @@ induction Hcontexts as
     Hcontext Hcontexts IH]; intros left right Htransport; simpl.
 - exact Htransport.
 - apply Hcontext. now apply IH.
+Qed.
+
+(** A scoped context may close one attribute namespace and expose another.
+    Unlike [query_rename_context_compatible], the input and output rename maps
+    and reachable-environment relations are intentionally different. *)
+Definition query_scoped_rename_context_compatible
+    (inner_environment_relation outer_environment_relation :
+      Env.env T -> Env.env T -> Prop)
+    (inner_rho outer_rho : attribute T -> attribute T)
+    (left_context right_context : query_expr_context T relname) : Prop :=
+  forall left right,
+    query_rename_transport_under
+      inner_environment_relation inner_rho left right ->
+    query_rename_transport_under outer_environment_relation outer_rho
+      (plug_query_expr_context left_context left)
+      (plug_query_expr_context right_context right).
+
+Lemma query_rename_context_compatible_scoped_same :
+  forall environment_relation rho left_context right_context,
+    query_rename_context_compatible environment_relation rho
+      left_context right_context ->
+    query_scoped_rename_context_compatible
+      environment_relation environment_relation rho rho
+      left_context right_context.
+Proof. intros environment_relation rho left_context right_context H; exact H. Qed.
+
+Theorem query_scoped_rename_context_transport :
+  forall inner_environment_relation outer_environment_relation
+      inner_rho outer_rho left_context right_context left right,
+    query_scoped_rename_context_compatible
+      inner_environment_relation outer_environment_relation
+      inner_rho outer_rho left_context right_context ->
+    query_rename_transport_under
+      inner_environment_relation inner_rho left right ->
+    query_rename_transport_under outer_environment_relation outer_rho
+      (plug_query_expr_context left_context left)
+      (plug_query_expr_context right_context right).
+Proof. intros; now apply H. Qed.
+
+(** One frame records only the outer namespace introduced by its paired query
+    contexts.  The inner namespace is threaded by the chain, which prevents a
+    frame from accidentally applying a rename map belonging to a sibling or
+    shadowed scope. *)
+Record query_rename_scope_step : Type := QueryRenameScopeStep {
+  query_scope_left_context : query_expr_context T relname;
+  query_scope_right_context : query_expr_context T relname;
+  query_scope_outer_environment_relation : Env.env T -> Env.env T -> Prop;
+  query_scope_outer_rename : attribute T -> attribute T
+}.
+
+Fixpoint plug_query_rename_scope_steps_left
+    (steps : list query_rename_scope_step)
+    (replacement : query_expr T relname) : query_expr T relname :=
+  match steps with
+  | nil => replacement
+  | step :: rest =>
+      plug_query_rename_scope_steps_left rest
+        (plug_query_expr_context
+          (query_scope_left_context step) replacement)
+  end.
+
+Fixpoint plug_query_rename_scope_steps_right
+    (steps : list query_rename_scope_step)
+    (replacement : query_expr T relname) : query_expr T relname :=
+  match steps with
+  | nil => replacement
+  | step :: rest =>
+      plug_query_rename_scope_steps_right rest
+        (plug_query_expr_context
+          (query_scope_right_context step) replacement)
+  end.
+
+Fixpoint query_rename_scope_steps_final_environment_relation
+    (current : Env.env T -> Env.env T -> Prop)
+    (steps : list query_rename_scope_step) :
+    Env.env T -> Env.env T -> Prop :=
+  match steps with
+  | nil => current
+  | step :: rest =>
+      query_rename_scope_steps_final_environment_relation
+        (query_scope_outer_environment_relation step) rest
+  end.
+
+Fixpoint query_rename_scope_steps_final_rename
+    (current : attribute T -> attribute T)
+    (steps : list query_rename_scope_step) : attribute T -> attribute T :=
+  match steps with
+  | nil => current
+  | step :: rest =>
+      query_rename_scope_steps_final_rename
+        (query_scope_outer_rename step) rest
+  end.
+
+Fixpoint query_rename_scope_steps_compatible
+    (current_environment_relation : Env.env T -> Env.env T -> Prop)
+    (current_rho : attribute T -> attribute T)
+    (steps : list query_rename_scope_step) : Prop :=
+  match steps with
+  | nil => True
+  | step :: rest =>
+      query_scoped_rename_context_compatible
+        current_environment_relation
+        (query_scope_outer_environment_relation step)
+        current_rho (query_scope_outer_rename step)
+        (query_scope_left_context step)
+        (query_scope_right_context step) /\
+      query_rename_scope_steps_compatible
+        (query_scope_outer_environment_relation step)
+        (query_scope_outer_rename step) rest
+  end.
+
+(** Arbitrarily many Project/GROUP/Join/correlated-subquery boundaries may
+    change rename maps independently.  Each step is proved locally, then this
+    theorem composes them without flattening the maps into one global rename. *)
+Theorem query_scoped_rename_context_chain_transport :
+  forall current_environment_relation current_rho steps,
+    query_rename_scope_steps_compatible
+      current_environment_relation current_rho steps ->
+    forall left right,
+      query_rename_transport_under
+        current_environment_relation current_rho left right ->
+      query_rename_transport_under
+        (query_rename_scope_steps_final_environment_relation
+          current_environment_relation steps)
+        (query_rename_scope_steps_final_rename current_rho steps)
+        (plug_query_rename_scope_steps_left steps left)
+        (plug_query_rename_scope_steps_right steps right).
+Proof.
+intros current_environment_relation current_rho steps Hsteps.
+revert current_environment_relation current_rho Hsteps.
+induction steps as [|step rest IH];
+  intros current_environment_relation current_rho Hsteps left right Hrename;
+  cbn in *.
+- exact Hrename.
+- destruct Hsteps as [Hstep Hrest].
+  apply IH; [exact Hrest|].
+  now apply Hstep.
 Qed.
 
 End Sec.
