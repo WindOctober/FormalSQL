@@ -1,0 +1,53 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: FormalSQL
+Source: https://github.com/WindOctober/FormalSQL
+
+Files: src/common/BasicFacts.v
+ src/common/BasicTacs.v
+ src/common/comparison/OrderedSet.v
+ src/common/lists/*
+ src/common/sets/*
+ src/common/trees/*
+ src/logic/*
+ src/data/flat/*
+ src/data/proof_of_concept/GenericInstance.v
+ src/data/proof_of_concept/SqlSyntax.v
+ src/data/proof_of_concept/TuplesImpl.v
+ src/data/proof_of_concept/Values.v
+Copyright: 2016-2022 FormalData
+ 2026 Jingyu Ke
+License: LGPL-3.0-only
+Comment: Shared FormalData collection, logic, tuple, and bag foundations.
+
+Files: src/common/comparison/DecidableEquality.v
+ src/data/sql/*
+ src/data/proof_of_concept/SchemaConstraints.v
+ src/data/proof_of_concept/ValueCore.v
+ src/data/proof_of_concept/ValueDomain.v
+ src/data/proof_of_concept/ValueFloat.v
+ src/data/proof_of_concept/ValueInteger.v
+ src/data/proof_of_concept/ValueNumeric.v
+ src/data/proof_of_concept/ValueNumericTypmod.v
+ src/data/proof_of_concept/ValuePredicates.v
+ src/data/proof_of_concept/ValueString.v
+ src/data/proof_of_concept/ValueTemporal.v
+ src/data/proof_of_concept/ValueTextInteger.v
+Copyright: 2026 Jingyu Ke
+License: MIT
+
+Files: .gitignore
+ AUTHORS
+ Makefile
+ README.md
+ coq-sqlformalsemantics.opam
+ src/Makefile.local
+ src/_CoqProject
+ src/common/LICENSE.md
+ src/logic/LICENSE.md
+ src/data/flat/LICENSE.md
+ src/data/sql/LICENSE.md
+ src/data/proof_of_concept/LICENSE.md
+ LICENSES/README.md
+ .reuse/dep5
+Copyright: 2026 Jingyu Ke
+License: MIT
