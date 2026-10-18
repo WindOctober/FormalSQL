@@ -1814,9 +1814,9 @@ Qed.
 
 Lemma eval_query_fetch_unary_lift_iff :
   forall env count input outcome,
-    eval_query env (QExpr_Fetch count input) outcome <->
+    eval_query env (QExpr_Fetch (S count) input) outcome <->
     query_unary_outcome_lift (eval_query env input)
-      (fun rows => query_fetch_local count rows) outcome.
+      (fun rows => query_fetch_local (S count) rows) outcome.
 Proof.
 intros env count input outcome; split; intro Heval.
 - inversion Heval; subst.
@@ -2408,10 +2408,25 @@ Theorem QExpr_Fetch_rename_transport :
       (QExpr_Fetch count input) (QExpr_Fetch count input').
 Proof.
 intros environment_relation rho count input input' Hschema Hinput.
+destruct count as [|count].
+{ split; [exact Hschema|].
+  intros left_env right_env Henv.
+  assert (Hnil : query_rows_rename rho nil nil).
+  { unfold query_rows_rename, rows_rename_sound.
+    split; [constructor|]. split;
+      unfold rows_rename_collision_safe, rows_rename_type_safe;
+      intros; discriminate. }
+  split.
+  - intros rows Hrows; apply eval_query_expr_fetch_zero_iff in Hrows.
+    inversion Hrows; subst; exists nil; split; [constructor|exact Hnil].
+  - split.
+    + intros rows Hrows; apply eval_query_expr_fetch_zero_iff in Hrows.
+      inversion Hrows; subst; exists nil; split; [constructor|exact Hnil].
+    + intro error; rewrite !eval_query_expr_fetch_zero_iff; split; discriminate. }
 eapply query_unary_constructor_rename_transport with
   (child := input) (child' := input')
-  (left_local := fun _ rows => query_fetch_local count rows)
-  (right_local := fun _ rows => query_fetch_local count rows);
+  (left_local := fun _ rows => query_fetch_local (S count) rows)
+  (right_local := fun _ rows => query_fetch_local (S count) rows);
   try eassumption.
 - apply query_fetch_local_rename_compatible.
 - intros env outcome; apply eval_query_fetch_unary_lift_iff.

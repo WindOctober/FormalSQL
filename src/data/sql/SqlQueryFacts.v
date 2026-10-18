@@ -2639,10 +2639,10 @@ Qed.
 
 Lemma eval_query_expr_fetch_success_iff :
   forall env count input output,
-    eval_query_expr env (QExpr_Fetch count input) (SqlSuccess output) <->
+    eval_query_expr env (QExpr_Fetch (S count) input) (SqlSuccess output) <->
     exists input_rows,
       eval_query_expr env input (SqlSuccess input_rows) /\
-      output = firstn count input_rows.
+      output = firstn (S count) input_rows.
 Proof.
 intros env count input output; split; intro Heval.
 - inversion Heval; subst; eauto.
@@ -2652,12 +2652,22 @@ Qed.
 
 Lemma eval_query_expr_fetch_error_iff :
   forall env count input error,
-    eval_query_expr env (QExpr_Fetch count input) (SqlError error) <->
+    eval_query_expr env (QExpr_Fetch (S count) input) (SqlError error) <->
     eval_query_expr env input (SqlError error).
 Proof.
 intros env count input error; split; intro Heval.
 - inversion Heval; subst; assumption.
 - now apply EQuery_FetchChildError.
+Qed.
+
+Lemma eval_query_expr_fetch_zero_iff :
+  forall env input outcome,
+    eval_query_expr env (QExpr_Fetch 0 input) outcome <->
+    outcome = SqlSuccess nil.
+Proof.
+intros env input outcome; split; intro H.
+- now inversion H.
+- subst; apply EQuery_FetchZero.
 Qed.
 
 End Sec.

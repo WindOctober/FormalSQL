@@ -1153,15 +1153,22 @@ Inductive eval_query_expr_outcome
         eval_query_expr_outcome env input (SqlSuccess input_rows) ->
         eval_query_expr_outcome env (QExpr_Offset offset input)
           (SqlSuccess (skipn offset input_rows))
+  (** Zero demand does not evaluate the child. Analysis errors belong at the
+      statement root (the admission boundary rejects nested analysis errors).
+      Positive FETCH remains a materialized slice: SQL frontends must admit
+      it only where exhaustive child evaluation cannot introduce errors. *)
+  | EQuery_FetchZero :
+      forall input,
+        eval_query_expr_outcome env (QExpr_Fetch 0 input) (SqlSuccess nil)
   | EQuery_FetchChildError :
       forall count input error,
         eval_query_expr_outcome env input (SqlError error) ->
-        eval_query_expr_outcome env (QExpr_Fetch count input) (SqlError error)
+        eval_query_expr_outcome env (QExpr_Fetch (S count) input) (SqlError error)
   | EQuery_FetchSuccess :
       forall count input input_rows,
         eval_query_expr_outcome env input (SqlSuccess input_rows) ->
-        eval_query_expr_outcome env (QExpr_Fetch count input)
-          (SqlSuccess (firstn count input_rows))
+        eval_query_expr_outcome env (QExpr_Fetch (S count) input)
+          (SqlSuccess (firstn (S count) input_rows))
 with eval_scalar_value_expr_outcome
     (env : Env.env T) :
     scalar_expr T relname ScalarResultValue -> sql_outcome value -> Prop :=
@@ -1502,11 +1509,14 @@ with eval_query_cardinality_outcome
       forall keys input outcome,
         eval_query_cardinality_outcome env input outcome ->
         eval_query_cardinality_outcome env (QExpr_OrderBy keys input) outcome
+  | ECardinality_FetchZero :
+      forall input,
+        eval_query_cardinality_outcome env (QExpr_Fetch 0 input) (SqlSuccess 0)
   | ECardinality_Fetch :
       forall count input outcome,
         eval_query_cardinality_outcome env input outcome ->
-        eval_query_cardinality_outcome env (QExpr_Fetch count input)
-          (query_fetch_cardinality_outcome count outcome)
+        eval_query_cardinality_outcome env (QExpr_Fetch (S count) input)
+          (query_fetch_cardinality_outcome (S count) outcome)
 
 (** Capped existential demand.  Target-only operators delegate without
     executing their target computations; FETCH 0 is decided without touching

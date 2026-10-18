@@ -1524,6 +1524,8 @@ Lemma query_expr_fetch_global_typed_congr :
       (QExpr_Fetch count first) (QExpr_Fetch count second).
 Proof.
 intros count first second [Houtputs Hequiv]; split; [exact Houtputs|].
+destruct count as [|count].
+{ intros env outcome; rewrite !eval_query_expr_fetch_zero_iff; reflexivity. }
 intros env outcome; split; intro Heval; inversion Heval; subst.
 - apply EQuery_FetchChildError. transport_query_forward Hequiv.
 - eapply EQuery_FetchSuccess. transport_query_forward Hequiv.

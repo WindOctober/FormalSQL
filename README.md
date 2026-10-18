@@ -133,6 +133,33 @@ turning physical execution plans into logical semantics.
 
 ## PostgreSQL-Oriented Details
 
+### Literal LIMIT boundary
+
+The existing `QExpr_Fetch` AST has a small executor-level zero rule:
+`Fetch 0 input` returns `SqlSuccess []` without a child evaluation premise.
+The cardinality relation likewise returns zero; the existing EXISTS-zero rule
+retains its analysis-placement guard. No cursor, stream AST or shared execution
+pool is introduced. All SQL entry points must still establish analysis-error
+placement and ordinary typed admission: `QExpr_Error` belongs at the statement
+root, not under a zero limit. PostgreSQL planning errors are not executor errors
+and must not be erased by this rule.
+
+Positive FETCH and OFFSET retain their materialized-list interpretation. This
+is deliberately **not** a general lazy SQL executor: frontends must not admit a
+positive SQL LIMIT whose child can fail in an unrequested suffix. Logos rejects
+those cases conservatively, as well as LIMIT combined with potentially failing
+local query definitions whose demand is not modeled. Its existing planner-
+constant guard remains in force even for zero LIMIT. Counts and output metadata
+are checked before applying the zero rule; unsupported syntax is not silently
+accepted just because it occurs in a skipped child.
+
+Accordingly, FETCH success/error decomposition and unary renaming-lift facts
+apply to positive counts. Zero has a separate exact empty-outcome theorem with
+no runtime-safety or progress premise on its child. OFFSET/FETCH exchange laws
+carry positive-count premises where a rewrite could otherwise introduce zero
+and suppress an error. These are laws of the admitted model, not permission to
+erase PostgreSQL's [analysis/planning-time expression evaluation](https://www.postgresql.org/docs/17/sql-expressions.html#SYNTAX-EXPRESS-EVAL).
+
 The concrete instance models the supported PostgreSQL behavior rather than
 leaving scalar and aggregate functions uninterpreted. Important examples
 include:
