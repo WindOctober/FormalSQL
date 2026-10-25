@@ -145,13 +145,16 @@ root, not under a zero limit. PostgreSQL planning errors are not executor errors
 and must not be erased by this rule.
 
 Positive FETCH and OFFSET retain their materialized-list interpretation. This
-is deliberately **not** a general lazy SQL executor: frontends must not admit a
-positive SQL LIMIT whose child can fail in an unrequested suffix. Logos rejects
-those cases conservatively, as well as LIMIT combined with potentially failing
-local query definitions whose demand is not modeled. Its existing planner-
-constant guard remains in force even for zero LIMIT. Counts and output metadata
-are checked before applying the zero rule; unsupported syntax is not silently
-accepted just because it occurs in a skipped child.
+is deliberately **not** a general lazy SQL executor: evaluating the complete
+child can expose runtime errors in a suffix that PostgreSQL would not request.
+Query-local bindings are also evaluated eagerly; the Fetch-0 rule does not
+suppress errors from bindings evaluated before the query body.
+
+Proofs establish results in this model. Transferring them to PostgreSQL requires
+the frontend to justify that these evaluation differences do not change the
+observed outcome. Frontends must also validate row counts, output metadata and
+analysis/planning behavior before applying the zero rule; skipped execution
+does not by itself make unsupported syntax or an invalid statement admissible.
 
 Accordingly, FETCH success/error decomposition and unary renaming-lift facts
 apply to positive counts. Zero has a separate exact empty-outcome theorem with
